@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<launch>
+
+    <!-- LAUNCH A "Plain Python" NODE -->
+    <node pkg = "cvnode" name = "cvnode" output = "screen" type = "cameranode.py" args="chmod +x">
+    </node>
+
+</launch>

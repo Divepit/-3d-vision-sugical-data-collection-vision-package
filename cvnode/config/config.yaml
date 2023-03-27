@@ -1,0 +1,2 @@
+camera_node_name: cameranode
+image_topic_name: /image_raw
