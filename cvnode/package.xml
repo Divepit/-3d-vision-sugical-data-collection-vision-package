@@ -52,9 +52,7 @@
   <buildtool_depend>catkin</buildtool_depend>
 
   <!-- add same packages as in setup.py -->
-  <depend>python-pytorch-pip</depend>
-
-  <depend>python3-papermill-pip</depend>
+  <!-- <depend>python-pytorch-pip</depend> -->
 
 
   <!-- The export tag contains other, unspecified, tags -->
