@@ -7,16 +7,24 @@ from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
 import cv2
 
-import torch
+# To return a position
+import tf2_geometry_msgs
 
 # Instantiate CvBridge
 bridge = CvBridge()
 
 def image_callback(msg):
-    print("Received an image!")
     try:
         # Convert your ROS Image message to OpenCV2
         cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+        print("Received an image!")
+
+        # Do something with image
+
+
+        # Publish result
+        
+
     except CvBridgeError as e:
         print(e)
     else:
