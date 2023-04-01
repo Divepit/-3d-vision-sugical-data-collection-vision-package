@@ -6,6 +6,9 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
 import cv2
+# to open yaml
+import yaml
+import os
 
 # To return a position
 import tf2_geometry_msgs
@@ -13,28 +16,48 @@ import tf2_geometry_msgs
 # Instantiate CvBridge
 bridge = CvBridge()
 
+def read_config_file(config_file_path):
+    if not os.path.exists(config_file_path):
+        raise RuntimeError("Config file doesn't exist: " + config_file_path)
+    rospy.loginfo("Read config from: " + config_file_path)
+
+    def read_yaml_file(file_path):
+        with open(file_path, 'r') as stream:
+            data = yaml.safe_load(stream)
+        return data
+    config = read_yaml_file(config_file_path)
+    return config
+
 def image_callback(msg):
     try:
         # Convert your ROS Image message to OpenCV2
         cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
+        cv2.imwrite('camera_image.jpeg', cv2_img)
         print("Received an image!")
 
         # Do something with image
 
 
         # Publish result
+        return
         
 
     except CvBridgeError as e:
         print(e)
     else:
-        # Save your OpenCV2 image as a jpeg 
+        # Save your OpenCV2 image as a jpeg
+        print('else: Exception')
         cv2.imwrite('camera_image.jpeg', cv2_img)
 
 def main():
+    # Read config file
+    config_path = rospy.get_param("configFile")
+    config = read_config_file(config_file_path=config_path)
+
     rospy.init_node('image_listener')
     # Define your image topic
-    image_topic = "/image_raw"
+    image_topic = config["image_topic_name"]
+    depthimage_topic = config["depthImage_topic_name"]
     # Set up your subscriber and define its callback
     rospy.Subscriber(image_topic, Image, image_callback)
     # Spin until ctrl + c
