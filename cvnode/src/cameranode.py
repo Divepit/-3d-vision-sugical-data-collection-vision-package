@@ -2,6 +2,8 @@
 import rospy
 # ROS Image message
 from sensor_msgs.msg import Image
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
 # ROS Image message -> OpenCV2 image converter
 from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
@@ -49,6 +51,15 @@ def image_callback(msg):
         print('else: Exception')
         cv2.imwrite('camera_image.jpeg', cv2_img)
 
+
+def pointcloud_callback(msg):
+    try:
+        #TODO do something with pointcloud
+        print("pointcloud received")
+    except:
+        print("pointcloud calback shit itself")
+    return
+
 def main():
     # Read config file
     config_path = rospy.get_param("configFile")
@@ -58,8 +69,11 @@ def main():
     # Define your image topic
     image_topic = config["image_topic_name"]
     depthimage_topic = config["depthImage_topic_name"]
+    pointcloud_topic = config["pointCloud_topic_name"]
+
     # Set up your subscriber and define its callback
     rospy.Subscriber(image_topic, Image, image_callback)
+    rospy.Subscriber(pointcloud_topic, PointCloud2, pointcloud_callback)
     # Spin until ctrl + c
     rospy.spin()
 

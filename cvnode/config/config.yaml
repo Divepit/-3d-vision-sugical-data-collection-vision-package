@@ -1,3 +1,4 @@
 camera_node_name: "cameranode"
 image_topic_name: "/3d_image/image_raw"
 depthImage_topic_name: "/3d_image/image_raw_depth"
+pointCloud_topic_name: "/3d_image/3d_cloud"
