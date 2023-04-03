@@ -1,9 +1,8 @@
 # rospy for the subscriber
 import rospy
 # ROS Image message
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 import sensor_msgs.point_cloud2 as pc2
-from sensor_msgs.msg import PointCloud2
 # ROS Image message -> OpenCV2 image converter
 from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
@@ -34,46 +33,75 @@ def image_callback(msg):
     try:
         # Convert your ROS Image message to OpenCV2
         cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
-        cv2.imwrite('camera_image.jpeg', cv2_img)
         print("Received an image!")
 
         # Do something with image
 
 
         # Publish result
-        return
+        return cv2_img
         
 
     except CvBridgeError as e:
+        print("Error in receiving rgb image!")
         print(e)
     else:
         # Save your OpenCV2 image as a jpeg
         print('else: Exception')
         cv2.imwrite('camera_image.jpeg', cv2_img)
+        return
 
 
 def pointcloud_callback(msg):
     try:
         #TODO do something with pointcloud
-        print("pointcloud received")
+        print("Pointcloud received!")
     except:
-        print("pointcloud calback shit itself")
+        print("Error in receiving pointcloud")
     return
+
+def depthImage_callback(msg):
+    try: 
+        cv2_d_img = bridge.imgmsg_to_cv2(msg)
+
+        print(type(cv2_d_img))
+        # cv2.imwrite('camera_depth_image.jpeg', cv2_d_img)
+
+        return
+    except CvBridgeError as e:
+        print(e)        
+        print("Error in receiving depth image!")
+        return
+
+def camera_info_callback(msg):
+    try:
+        height = msg.height
+        width = msg.width
+        K_intrinsic = msg.K
+        return
+    except:
+        print("Error in receiving intrinsics!")
+        return
+        
 
 def main():
     # Read config file
     config_path = rospy.get_param("configFile")
     config = read_config_file(config_file_path=config_path)
 
-    rospy.init_node('image_listener')
+    cameraNode = rospy.init_node('image_listener')
     # Define your image topic
     image_topic = config["image_topic_name"]
     depthimage_topic = config["depthImage_topic_name"]
     pointcloud_topic = config["pointCloud_topic_name"]
+    cameraInfoTopic = config["cameraInfo_topic_name"]
 
     # Set up your subscriber and define its callback
     rospy.Subscriber(image_topic, Image, image_callback)
     rospy.Subscriber(pointcloud_topic, PointCloud2, pointcloud_callback)
+    rospy.Subscriber(depthimage_topic, Image, depthImage_callback)
+    rospy.Subscriber(cameraInfoTopic, CameraInfo, camera_info_callback)
+
     # Spin until ctrl + c
     rospy.spin()
 

@@ -17,14 +17,16 @@ def read_config_file(config_file_path):
 class cameraNode(object):
     
     def __init__(self):
+
         # Read config file
         config_path = rospy.get_param("configFile")
-        config = read_config_file(config_file_path=config_path)
+        self.config = read_config_file(config_file_path=config_path)
 
         #Get Names
         self.nodeName = config["camera_node_name"]
         self.imageTopic = config["image_topic_name"]
         self.depthimageTopic = config["depthImage_topic_name"]
+        self.cameraInfoTopic = config["cameraInfo_topic_name"]
         
         self.K_int, self.w_img, self.h_img = self.receiveCameraInfo()
 
