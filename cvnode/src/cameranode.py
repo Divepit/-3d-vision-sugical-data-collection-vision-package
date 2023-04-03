@@ -91,10 +91,10 @@ def main():
 
     cameraNode = rospy.init_node('image_listener')
     # Define your image topic
-    image_topic = config["image_topic_name"]
-    depthimage_topic = config["depthImage_topic_name"]
-    pointcloud_topic = config["pointCloud_topic_name"]
-    cameraInfoTopic = config["cameraInfo_topic_name"]
+    image_topic = config["image_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
+    depthimage_topic = config["depthImage_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
+    pointcloud_topic = config["pointCloud_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
+    cameraInfoTopic = config["cameraInfo_topic_name"] # http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html
 
     # Set up your subscriber and define its callback
     rospy.Subscriber(image_topic, Image, image_callback)
