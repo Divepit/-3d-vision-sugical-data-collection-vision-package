@@ -65,7 +65,7 @@ class camera():
         try:
             # Convert your ROS Image message to OpenCV2
             cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
-            print("Received an image!")
+            # print("Received an image!")
 
             # Do something with image
 
@@ -83,18 +83,18 @@ class camera():
             return
 
     def pointcloud_callback(self, msg):
-        try:
-            #TODO do something with pointcloud
-            print("Pointcloud received!")
-        except:
-            print("Error in receiving pointcloud")
+        # try:
+        #     #TODO do something with pointcloud
+        #     print("Pointcloud received!")
+        # except:
+        #     print("Error in receiving pointcloud")
         return
 
     def depthImage_callback(self, msg):
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)
 
-            print(type(cv2_d_img))
+            # print(type(cv2_d_img))
             # cv2.imwrite('camera_depth_image.jpeg', cv2_d_img)
 
             return
