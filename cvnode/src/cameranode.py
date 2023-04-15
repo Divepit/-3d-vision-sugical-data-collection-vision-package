@@ -30,25 +30,35 @@ class camera():
         # Toggle to enable / disable saving images
         self.recordFrames = False
         if self.recordFrames == True:
+            ## Required to store results in general
             # get the current timestamp
             now = datetime.now()
             timestamp = now.strftime('%Y-%m-%d-%H-%M-%S')
 
-            self.frameNumberRGB = 0
-            self.frameNumberDepth = 0
             self.origPath = os.getcwd()
-            resultPath = 'results/' + timestamp + '/'
-            self.relRGB = resultPath + 'rgbImages/'
-            self.relDepth = resultPath + 'depthImages/'
+        
             self.pkg_path = rospkg.RosPack().get_path('cvnode')
+            self.resultPath = 'results/' + timestamp + '/'
 
-            # Create directories if they do not exist
+            self.counter_DepthImage = 0
+            self.pathDepth = self.resultPath + 'depth_Images/'
+            
             os.chdir(self.pkg_path)
-            if not os.path.exists(os.path.dirname(self.relRGB)):
-                os.makedirs(os.path.dirname(self.relRGB))
-            if not os.path.exists(os.path.dirname(self.relDepth)):
-                os.makedirs(os.path.dirname(self.relDepth))
+            if not os.path.exists(os.path.dirname(self.pathDepth)):
+                os.makedirs(os.path.dirname(self.pathDepth))
             os.chdir(self.origPath)
+            ###
+
+            # Required to store RGB images
+            ###
+            self.counter_RGB = 0
+            self.pathRGB = self.resultPath + 'rgb_Images/'
+
+            os.chdir(self.pkg_path)
+            if not os.path.exists(os.path.dirname(self.pathRGB)):
+                os.makedirs(os.path.dirname(self.pathRGB))
+            os.chdir(self.origPath)
+            ###
 
         config_path = rospy.get_param("configFile")
         self.config = self.read_config_file(config_file_path=config_path)
@@ -104,28 +114,16 @@ class camera():
 
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                frameName = str(self.frameNumberRGB).zfill(4) + '.jpeg'
-
-                os.chdir(self.pkg_path)
-                tmp = cv2.imwrite(self.relRGB + frameName, cv2_img)
-                self.frameNumberRGB += 1
-                os.chdir(self.origPath)
+                self.counter_RGB = self.saveImage(cv2_img, folderName=self.pathRGB, counter=self.counter_RGB)
                 
             return cv2_img
 
     def pointcloud_callback(self, msg):
-        # try:
-        #     #TODO do something with pointcloud
-        #     print("Pointcloud received!")
-        # except:
-        #     print("Error in receiving pointcloud")
         return
 
     def depthImage_callback(self, msg):
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)
-
-            # cv2.imwrite('camera_depth_image.jpeg', cv2_d_img)
 
         except CvBridgeError as e:
             print(e)        
@@ -135,13 +133,7 @@ class camera():
         else:
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                frameName = str(self.frameNumberDepth).zfill(4) + '.jpeg'
-
-                os.chdir(self.pkg_path)
-                tmp = cv2.imwrite(self.relDepth + frameName, cv2_d_img)
-                self.frameNumberDepth += 1
-                os.chdir(self.origPath)
-
+                self.counter_DepthImage = self.saveImage(cv2_d_img, folderName=self.pathDepth, counter=self.counter_DepthImage)
 
     def targetPositionCallback(self, msg):
         self.targetPosition = np.array([msg.x, msg.y, msg.z])
@@ -158,6 +150,16 @@ class camera():
             return data
         config = read_yaml_file(config_file_path)
         return config
+    
+    def saveImage(self, image, folderName, counter):
+        frameName = str(counter).zfill(5) + '.jpeg'
+
+        os.chdir(self.pkg_path)
+        tmp = cv2.imwrite(folderName + frameName, image)
+        counter += 1
+        os.chdir(self.origPath)
+
+        return counter
         
 
 
