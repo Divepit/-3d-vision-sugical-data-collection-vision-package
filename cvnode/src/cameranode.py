@@ -109,11 +109,11 @@ class camera():
             return cv2_img
 
     def pointcloud_callback(self, msg):
-        try:
-            #TODO do something with pointcloud
-            print("Pointcloud received!")
-        except:
-            print("Error in receiving pointcloud")
+        # try:
+        #     #TODO do something with pointcloud
+        #     print("Pointcloud received!")
+        # except:
+        #     print("Error in receiving pointcloud")
         return
 
     def depthImage_callback(self, msg):
