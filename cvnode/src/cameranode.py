@@ -32,7 +32,8 @@ class camera():
             now = datetime.now()
             timestamp = now.strftime('%Y-%m-%d-%H-%M-%S')
 
-            self.frameNumber = 0
+            self.frameNumberRGB = 0
+            self.frameNumberDepth = 0
             self.origPath = os.getcwd()
             resultPath = 'results/' + timestamp + '/'
             self.relRGB = resultPath + 'rgbImages/'
@@ -87,7 +88,6 @@ class camera():
         try:
             # Convert your ROS Image message to OpenCV2
             cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
-            print("Received an image!")
             
         except CvBridgeError as e:
             print("Error in receiving rgb image!")
@@ -97,13 +97,11 @@ class camera():
 
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                print('Saving Frame as image')
-                frameName = str(self.frameNumber).zfill(4) + '.jpeg'
+                frameName = str(self.frameNumberRGB).zfill(4) + '.jpeg'
 
                 os.chdir(self.pkg_path)
                 tmp = cv2.imwrite(self.relRGB + frameName, cv2_img)
-                print('Success in saving ' + frameName + ': ' + str(tmp))
-                self.frameNumber += 1
+                self.frameNumberRGB += 1
                 os.chdir(self.origPath)
                 
             return cv2_img
@@ -130,14 +128,15 @@ class camera():
         else:
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                print('Saving Frame as image')
-                frameName = str(self.frameNumber).zfill(4) + '.jpeg'
+                frameName = str(self.frameNumberDepth).zfill(4) + '.jpeg'
 
                 os.chdir(self.pkg_path)
                 tmp = cv2.imwrite(self.relDepth + frameName, cv2_d_img)
-                print('Success in saving ' + frameName + ': ' + str(tmp))
-                self.frameNumber += 1
+                self.frameNumberDepth += 1
                 os.chdir(self.origPath)
+
+
+
 
     def read_config_file(self, config_file_path):
         if not os.path.exists(config_file_path):
