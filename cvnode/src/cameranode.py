@@ -1,5 +1,7 @@
 # rospy for the subscriber
 import rospy
+import rospkg
+from datetime import datetime
 
 import message_filters
 # ROS Image message
@@ -12,6 +14,7 @@ import cv2
 # to open yaml
 import yaml
 import os
+import numpy as np
 
 # To return a position
 import tf2_geometry_msgs
@@ -21,10 +24,34 @@ import tf2_geometry_msgs
 
 class camera():
     def __init__(self) -> None:
+
+        # Toggle to enable / disable saving images
+        self.recordFrames = False
+        if self.recordFrames == True:
+            # get the current timestamp
+            now = datetime.now()
+            timestamp = now.strftime('%Y-%m-%d-%H-%M-%S')
+
+            self.frameNumber = 0
+            self.origPath = os.getcwd()
+            resultPath = 'results/' + timestamp + '/'
+            self.relRGB = resultPath + 'rgbImages/'
+            self.relDepth = resultPath + 'depthImages/'
+            self.pkg_path = rospkg.RosPack().get_path('cvnode')
+
+            # Create directories if they do not exist
+            os.chdir(self.pkg_path)
+            if not os.path.exists(os.path.dirname(self.relRGB)):
+                os.makedirs(os.path.dirname(self.relRGB))
+            if not os.path.exists(os.path.dirname(self.relDepth)):
+                os.makedirs(os.path.dirname(self.relDepth))
+            os.chdir(self.origPath)
+
         config_path = rospy.get_param("configFile")
         self.config = self.read_config_file(config_file_path=config_path)
 
-        cameraNode = rospy.init_node(self.config["camera_node_name"])
+        rospy.init_node(self.config["camera_node_name"])
+
         # Define your image topic
         image_topic = self.config["image_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
         depthimage_topic = self.config["depthImage_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
@@ -44,11 +71,6 @@ class camera():
         ts = message_filters.ApproximateTimeSynchronizer([image, image_depth, point_cloud], queue_size=10, slop=0.5)
         ts.registerCallback(self.get_syncronous_data)
 
-        # # Set up your subscriber and define its callback
-        # rospy.Subscriber(image_topic, Image, self.image_callback)
-        # rospy.Subscriber(pointcloud_topic, PointCloud2, self.pointcloud_callback)
-        # rospy.Subscriber(depthimage_topic, Image, self.depthImage_callback)
-
         # Spin until ctrl + c
         rospy.spin()
     
@@ -66,21 +88,25 @@ class camera():
             # Convert your ROS Image message to OpenCV2
             cv2_img = bridge.imgmsg_to_cv2(msg, "bgr8")
             print("Received an image!")
-
-            # Do something with image
-
-            # Publish result
-            return cv2_img
             
-
         except CvBridgeError as e:
             print("Error in receiving rgb image!")
             print(e)
+
         else:
+
             # Save your OpenCV2 image as a jpeg
-            print('else: Exception')
-            cv2.imwrite('camera_image.jpeg', cv2_img)
-            return
+            if self.recordFrames == True:
+                print('Saving Frame as image')
+                frameName = str(self.frameNumber).zfill(4) + '.jpeg'
+
+                os.chdir(self.pkg_path)
+                tmp = cv2.imwrite(self.relRGB + frameName, cv2_img)
+                print('Success in saving ' + frameName + ': ' + str(tmp))
+                self.frameNumber += 1
+                os.chdir(self.origPath)
+                
+            return cv2_img
 
     def pointcloud_callback(self, msg):
         try:
@@ -94,14 +120,24 @@ class camera():
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)
 
-            print(type(cv2_d_img))
             # cv2.imwrite('camera_depth_image.jpeg', cv2_d_img)
 
-            return
         except CvBridgeError as e:
             print(e)        
             print("Error in receiving depth image!")
             return
+        
+        else:
+            # Save your OpenCV2 image as a jpeg
+            if self.recordFrames == True:
+                print('Saving Frame as image')
+                frameName = str(self.frameNumber).zfill(4) + '.jpeg'
+
+                os.chdir(self.pkg_path)
+                tmp = cv2.imwrite(self.relDepth + frameName, cv2_d_img)
+                print('Success in saving ' + frameName + ': ' + str(tmp))
+                self.frameNumber += 1
+                os.chdir(self.origPath)
 
     def read_config_file(self, config_file_path):
         if not os.path.exists(config_file_path):
