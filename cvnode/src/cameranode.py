@@ -6,6 +6,8 @@ from datetime import datetime
 import message_filters
 # ROS Image message
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
+from geometry_msgs.msg import Point
+
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
 from cv_bridge import CvBridge, CvBridgeError
@@ -51,6 +53,9 @@ class camera():
         config_path = rospy.get_param("configFile")
         self.config = self.read_config_file(config_file_path=config_path)
 
+        # Initialize Target position
+        self.targetPosition = np.zeros((3,1), dtype=np.float)
+
         rospy.init_node(self.config["camera_node_name"])
 
         # Define your image topic
@@ -59,18 +64,22 @@ class camera():
         pointcloud_topic = self.config["pointCloud_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
         cameraInfoTopic = self.config["cameraInfo_topic_name"] # http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html
 
-        #get camera infos only once
+        # Get name of target position topic and camera position
+        targetTopic = self.config["coordinates_of_target"]
+
+        # get camera infos once to initialize
         self.camera_info = rospy.wait_for_message(cameraInfoTopic, CameraInfo, timeout=None)
 
-
+        # Subscribe to image topics
         image = message_filters.Subscriber(image_topic, Image)
         image_depth = message_filters.Subscriber(depthimage_topic, Image)
         point_cloud = message_filters.Subscriber(pointcloud_topic, PointCloud2)
-
-
         # get Synchronize data
         ts = message_filters.ApproximateTimeSynchronizer([image, image_depth, point_cloud], queue_size=10, slop=0.5)
         ts.registerCallback(self.get_syncronous_data)
+
+        # Subscribe to target position
+        rospy.Subscriber(targetTopic, Point, self.targetPositionCallback)
 
         # Spin until ctrl + c
         rospy.spin()
@@ -80,8 +89,6 @@ class camera():
         self.image_callback(image)
         self.depthImage_callback(depth_image)
         self.pointcloud_callback(point_cloud)
-
-    
 
 
     def image_callback(self, msg):
@@ -136,7 +143,9 @@ class camera():
                 os.chdir(self.origPath)
 
 
-
+    def targetPositionCallback(self, msg):
+        self.targetPosition = np.array([msg.x, msg.y, msg.z])
+        return
 
     def read_config_file(self, config_file_path):
         if not os.path.exists(config_file_path):
