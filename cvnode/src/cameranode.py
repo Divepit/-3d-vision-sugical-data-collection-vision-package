@@ -3,10 +3,14 @@ import rospy
 import rospkg
 from datetime import datetime
 
+import tf
+from tf2_msgs.msg import TFMessage
+import tf2_ros
 import message_filters
 # ROS Image message
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from geometry_msgs.msg import Point
+from geometry_msgs.msg import PoseStamped
 
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
@@ -20,9 +24,6 @@ import numpy as np
 
 # To return a position
 import tf2_geometry_msgs
-
-
-
 
 class camera():
     def __init__(self) -> None:
@@ -66,6 +67,22 @@ class camera():
         # Initialize Target position
         self.targetPosition = np.zeros((3,1), dtype=np.float)
 
+        # Initialize Camera Pose
+        self.CamPosition = np.zeros((3,1), dtype=np.float)
+        self.CamOrient = np.zeros((4,1), dtype=np.float)
+        ###
+        # Initialize Pose of camera w.r.t camera frame to create transform
+        Campose_stamped = PoseStamped()
+        Campose_stamped.header.frame_id = 'world'
+        Campose_stamped.pose.position.x = 0.0
+        Campose_stamped.pose.position.y = 0.0
+        Campose_stamped.pose.position.z = 0.0
+        Campose_stamped.pose.orientation.x = 0.0
+        Campose_stamped.pose.orientation.y = 0.0
+        Campose_stamped.pose.orientation.z = 0.0
+        Campose_stamped.pose.orientation.w = 1.0
+        ###
+
         rospy.init_node(self.config["camera_node_name"])
 
         # Define your image topic
@@ -76,6 +93,7 @@ class camera():
 
         # Get name of target position topic and camera position
         targetTopic = self.config["coordinates_of_target"]
+        self.cameraFrameName = self.config["cameraPoseTF"]
 
         # get camera infos once to initialize
         self.camera_info = rospy.wait_for_message(cameraInfoTopic, CameraInfo, timeout=None)
@@ -91,8 +109,20 @@ class camera():
         # Subscribe to target position
         rospy.Subscriber(targetTopic, Point, self.targetPositionCallback)
 
+        # Create tf listener
+        tf_buffer = tf2_ros.Buffer()
+        listener = tf2_ros.TransformListener(tf_buffer)
+
         # Spin until ctrl + c
-        rospy.spin()
+        while not rospy.is_shutdown():
+            try:
+                transform = tf_buffer.lookup_transform(self.cameraFrameName, 'world', rospy.Time())
+                pose_transformed = tf2_geometry_msgs.do_transform_pose(Campose_stamped, transform)
+                print(pose_transformed)
+            except:
+                print("EXCEPTION")
+                
+            rospy.spin()
     
 
     def get_syncronous_data(self, image, depth_image, point_cloud):
