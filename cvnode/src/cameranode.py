@@ -72,16 +72,19 @@ class camera():
         self.CamOrient = np.zeros((4,1), dtype=np.float)
         ###
         # Initialize Pose of camera w.r.t camera frame to create transform
-        Campose_stamped = PoseStamped()
-        Campose_stamped.header.frame_id = 'world'
-        Campose_stamped.pose.position.x = 0.0
-        Campose_stamped.pose.position.y = 0.0
-        Campose_stamped.pose.position.z = 0.0
-        Campose_stamped.pose.orientation.x = 0.0
-        Campose_stamped.pose.orientation.y = 0.0
-        Campose_stamped.pose.orientation.z = 0.0
-        Campose_stamped.pose.orientation.w = 1.0
+        self.Campose_stamped = PoseStamped()
+        self.Campose_stamped.header.frame_id = 'world'
+        self.Campose_stamped.pose.position.x = 0.0
+        self.Campose_stamped.pose.position.y = 0.0
+        self.Campose_stamped.pose.position.z = 0.0
+        self.Campose_stamped.pose.orientation.x = 0.0
+        self.Campose_stamped.pose.orientation.y = 0.0
+        self.Campose_stamped.pose.orientation.z = 0.0
+        self.Campose_stamped.pose.orientation.w = 1.0
         ###
+
+        # Initialize Camera - Target distance
+        self.camTargetDistance = 0
 
         rospy.init_node(self.config["camera_node_name"])
 
@@ -110,19 +113,10 @@ class camera():
         rospy.Subscriber(targetTopic, Point, self.targetPositionCallback)
 
         # Create tf listener
-        tf_buffer = tf2_ros.Buffer()
-        listener = tf2_ros.TransformListener(tf_buffer)
-
-        # Spin until ctrl + c
-        while not rospy.is_shutdown():
-            try:
-                transform = tf_buffer.lookup_transform(self.cameraFrameName, 'world', rospy.Time())
-                pose_transformed = tf2_geometry_msgs.do_transform_pose(Campose_stamped, transform)
-                print(pose_transformed)
-            except:
-                print("EXCEPTION")
+        self.tf_buffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tf_buffer)
                 
-            rospy.spin()
+        rospy.spin()
     
 
     def get_syncronous_data(self, image, depth_image, point_cloud):
@@ -165,8 +159,26 @@ class camera():
             if self.recordFrames == True:
                 self.counter_DepthImage = self.saveImage(cv2_d_img, folderName=self.pathDepth, counter=self.counter_DepthImage)
 
+            # Get camera position
+            transform = self.tf_buffer.lookup_transform('world', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
+            pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, transform)
+            self.setCameraPose(pose_transformed)
+            self.getTargetCameraDistance()
+            
+        return
+
     def targetPositionCallback(self, msg):
         self.targetPosition = np.array([msg.x, msg.y, msg.z])
+        return
+    
+    def setCameraPose(self, pose_msg):
+        self.CamPosition = np.array([pose_msg.pose.position.x, pose_msg.pose.position.y, pose_msg.pose.position.z])
+        self.CamOrient = np.array([pose_msg.pose.orientation.x, pose_msg.pose.orientation.y, pose_msg.pose.orientation.z, pose_msg.pose.orientation.w])
+        return
+    
+    def getTargetCameraDistance(self):
+        delta = self.targetPosition - self.CamPosition
+        self.camTargetDistance = np.linalg.norm(delta)
         return
 
     def read_config_file(self, config_file_path):
