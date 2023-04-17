@@ -223,7 +223,6 @@ class camera():
             except cv2.error:
                 print("Window already closed. Ignocv_d_imgring")
         
-        print(centers)
         return(centers)
 
 
