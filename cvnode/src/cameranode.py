@@ -2,6 +2,7 @@
 import rospy
 import rospkg
 from datetime import datetime
+import math
 
 import tf
 from tf2_msgs.msg import TFMessage
@@ -24,6 +25,7 @@ import numpy as np
 
 # To return a position
 import tf2_geometry_msgs
+
 
 class camera():
     def __init__(self) -> None:
@@ -170,32 +172,63 @@ class camera():
             pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, transform)
             self.setCameraPose(pose_transformed)
             self.getTargetCameraDistance()
+            target_point = self.get_target_point_on_image()
             centers = self.get_obstacle_centers(cv2_d_img)
             
         return
+    def get_target_point_on_image(self):
+        #projects the 3d point onto the 2d image
+        #returns the 2d image point
+
+        K = np.array(self.camera_info.K)
+        K = K.reshape((3, 3))
+
+
+        rvec = euler_from_quaternion(self.CamOrient[0], self.CamOrient[1], self.CamOrient[2], self.CamOrient[3])
+        print(rvec)
+        translation_vec = self.targetPosition - self.CamPosition
+        print(translation_vec)
+        tvec = translation_vec.astype(np.float32)
+        dist_coeffs = np.zeros((4, 1)) # distortion coefficients TODO add correct one from camera info
+        point3d = self.targetPosition.astype(np.float32) # target point position in world coordinates
+
+        # Project the 3D point onto the image plane
+        point2d, _ = cv2.projectPoints(point3d, rvec, tvec, K, dist_coeffs)
+
+        print(point2d)
+        return point2d
+
     
-    def get_obstacle_centers(self, cv_d_img) -> list:
-        #generate depth mask
-        mask_threshold = np.nan_to_num(cv_d_img, nan= np.inf)
-
+    def get_depth_mask(self,depth_image, min_distance, max_distance):
+        #returns a mask with all 1 for distance values between min and max distance everything else is 0
+    
+        #replace all nan with np.inf
+        mask_threshold = np.nan_to_num(depth_image, nan= np.inf)
         
-        distance_mask = mask_threshold < self.camTargetDistance * self.depth_threshold
-        close_mask = mask_threshold > self.finger_distance_min 
+        max_mask = mask_threshold < max_distance
+        min_mask = mask_threshold > min_distance
 
-        mask =  close_mask * distance_mask
+        mask =  max_mask * min_mask
 
         mask_threshold[mask] = 1
         mask_threshold[~mask] = 0
 
+        return mask_threshold
+
+
+    def get_obstacle_centers(self, cv_d_img) -> list:
+        #generate depth mask
+
+        mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
         
 
-        mask_threshold = mask_threshold.astype(np.uint8)
+        mask = mask.astype(np.uint8)
 
-        threshold_image = mask_threshold * 255
+        threshold_image = mask * cv_d_img
         threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
 
         centers = []
-        contours, _ = cv2.findContours(mask_threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
 
             # calculate moments for each contour
@@ -209,11 +242,11 @@ class camera():
                 centers.append((cX,cY))
                 cv2.circle(threshold_image, (cX, cY), 5, (255, 0, 0), -1)
             else:
-                #scip value or else devide by zero error
+                #skip value or else devide by zero error
                 continue
         
 
-        show_image = False
+        show_image = True
         if show_image:
             cv2.namedWindow('img', cv2.WINDOW_NORMAL)
             cv2.imshow('img', threshold_image)
@@ -223,6 +256,7 @@ class camera():
             except cv2.error:
                 print("Window already closed. Ignocv_d_imgring")
         
+
         return(centers)
 
 
@@ -261,7 +295,30 @@ class camera():
         os.chdir(self.origPath)
 
         return counter
-        
+
+
+
+def euler_from_quaternion(x, y, z, w):
+        """
+        Convert a quaternion into euler angles (roll, pitch, yaw)
+        roll is rotation around x in radians (counterclockwise)
+        pitch is rotation around y in radians (counterclockwise)
+        yaw is rotation around z in radians (counterclockwise)
+        """
+        t0 = +2.0 * (w * x + y * z)
+        t1 = +1.0 - 2.0 * (x * x + y * y)
+        roll_x = math.atan2(t0, t1)
+     
+        t2 = +2.0 * (w * y - z * x)
+        t2 = +1.0 if t2 > +1.0 else t2
+        t2 = -1.0 if t2 < -1.0 else t2
+        pitch_y = math.asin(t2)
+     
+        t3 = +2.0 * (w * z + x * y)
+        t4 = +1.0 - 2.0 * (y * y + z * z)
+        yaw_z = math.atan2(t3, t4)
+        rotation_vec = np.array([roll_x, pitch_y, yaw_z], dtype=np.float32)
+        return  rotation_vec # in radians
 
 
 if __name__ == '__main__':
