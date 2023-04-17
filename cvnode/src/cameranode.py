@@ -88,6 +88,8 @@ class camera():
 
         # Initialize depth image threshold in percent
         self.depth_threshold = 0.8
+        # Min distance from camera
+        self.finger_distance_min = 0.1
 
         rospy.init_node(self.config["camera_node_name"])
 
@@ -152,12 +154,6 @@ class camera():
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)
 
-            #generate depth mask
-            mask_threshold = np.nan_to_num(cv2_d_img, nan= np.inf)
-            mask = mask_threshold < self.camTargetDistance * self.depth_threshold
-            mask_threshold[mask] = 1
-            mask_threshold[~mask] = 0
-            mask_threshold = mask_threshold * 255
 
         except CvBridgeError as e:
             print(e)        
@@ -174,8 +170,62 @@ class camera():
             pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, transform)
             self.setCameraPose(pose_transformed)
             self.getTargetCameraDistance()
+            centers = self.get_obstacle_centers(cv2_d_img)
             
         return
+    
+    def get_obstacle_centers(self, cv_d_img) -> list:
+        #generate depth mask
+        mask_threshold = np.nan_to_num(cv_d_img, nan= np.inf)
+
+        
+        distance_mask = mask_threshold < self.camTargetDistance * self.depth_threshold
+        close_mask = mask_threshold > self.finger_distance_min 
+
+        mask =  close_mask * distance_mask
+
+        mask_threshold[mask] = 1
+        mask_threshold[~mask] = 0
+
+        
+
+        mask_threshold = mask_threshold.astype(np.uint8)
+
+        threshold_image = mask_threshold * 255
+        threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
+
+        centers = []
+        contours, _ = cv2.findContours(mask_threshold, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours:
+
+            # calculate moments for each contour
+            M = cv2.moments(c)
+ 
+            
+            # calculate x,y coordinate of center
+            if M["m00"] != 0 :
+                cX = int(M["m10"] / M["m00"])
+                cY = int(M["m01"] / M["m00"])
+                centers.append((cX,cY))
+                cv2.circle(threshold_image, (cX, cY), 5, (255, 0, 0), -1)
+            else:
+                #scip value or else devide by zero error
+                continue
+        
+
+        show_image = False
+        if show_image:
+            cv2.namedWindow('img', cv2.WINDOW_NORMAL)
+            cv2.imshow('img', threshold_image)
+            cv2.waitKey(0)
+            try:
+                cv2.destroyWindow('img')
+            except cv2.error:
+                print("Window already closed. Ignocv_d_imgring")
+        
+        print(centers)
+        return(centers)
+
 
     def targetPositionCallback(self, msg):
         self.targetPosition = np.array([msg.x, msg.y, msg.z])
