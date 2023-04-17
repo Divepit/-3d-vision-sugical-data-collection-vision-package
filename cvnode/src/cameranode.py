@@ -86,6 +86,9 @@ class camera():
         # Initialize Camera - Target distance
         self.camTargetDistance = 0
 
+        # Initialize depth image threshold in percent
+        self.depth_threshold = 0.8
+
         rospy.init_node(self.config["camera_node_name"])
 
         # Define your image topic
@@ -148,6 +151,13 @@ class camera():
     def depthImage_callback(self, msg):
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)
+
+            #generate depth mask
+            mask_threshold = np.nan_to_num(cv2_d_img, nan= np.inf)
+            mask = mask_threshold < self.camTargetDistance * self.depth_threshold
+            mask_threshold[mask] = 1
+            mask_threshold[~mask] = 0
+            mask_threshold = mask_threshold * 255
 
         except CvBridgeError as e:
             print(e)        
