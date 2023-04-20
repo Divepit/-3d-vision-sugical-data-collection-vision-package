@@ -10,8 +10,8 @@ import tf2_ros
 import message_filters
 # ROS Image message
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
-from geometry_msgs.msg import Point
-from geometry_msgs.msg import PoseStamped
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped
 
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
@@ -127,9 +127,22 @@ class camera():
     
 
     def get_syncronous_data(self, image, depth_image, point_cloud):
+        #main callback function
+        self.get_world_data()
         self.image_callback(image)
         self.depthImage_callback(depth_image)
         self.pointcloud_callback(point_cloud)
+
+
+    def get_world_data(self):
+        # Get camera position
+        self.transform_camera_to_world = self.tf_buffer.lookup_transform('world', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
+        self.transform_wolrd_to_camera = self.tf_buffer.lookup_transform(self.cameraFrameName, 'world', rospy.get_rostime(), rospy.Duration(0.1))
+
+        pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, self.transform_camera_to_world)
+
+        self.setCameraPose(pose_transformed)
+        self.getTargetCameraDistance()
 
 
     def image_callback(self, msg):
@@ -167,25 +180,11 @@ class camera():
             if self.recordFrames == True:
                 self.counter_DepthImage = self.saveImage(cv2_d_img, folderName=self.pathDepth, counter=self.counter_DepthImage)
 
-            # Get camera position
-            transform = self.tf_buffer.lookup_transform('world', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
-            pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, transform)
-            self.setCameraPose(pose_transformed)
-            self.getTargetCameraDistance()
-            self.target_point = self.get_target_point_on_image()
+
+            self.target_point = self.project_world_point_onto_camera(self.targetPosition)
             centers = self.get_obstacle_centers(cv2_d_img)
             
         return
-    def get_target_point_on_image(self):
-        #projects the 3d point onto the 2d image
-        #returns the 2d image point
-
-        K = np.array(self.camera_info.K)
-        K = K.reshape((3, 3))
-
-        points = project_3d_point(K, self.CamPosition, self.CamOrient, self.targetPosition)
-        print(f"new version: {points}")
-        return points
 
     
     def get_depth_mask(self,depth_image, min_distance, max_distance):
@@ -245,8 +244,6 @@ class camera():
                 cv2.destroyWindow('img')
             except cv2.error:
                 print("Window already closed. Ignocv_d_imgring")
-            
-        
 
         return(centers)
 
@@ -257,7 +254,7 @@ class camera():
     
     def setCameraPose(self, pose_msg):
         self.CamPosition = np.array([pose_msg.pose.position.x, pose_msg.pose.position.y, pose_msg.pose.position.z])
-        self.CamOrient = np.array([pose_msg.pose.orientation.x, pose_msg.pose.orientation.y, pose_msg.pose.orientation.z, pose_msg.pose.orientation.w])
+        self.CamOrient = np.array([pose_msg.pose.orientation.w, pose_msg.pose.orientation.x, pose_msg.pose.orientation.y, pose_msg.pose.orientation.z])
         return
     
     def getTargetCameraDistance(self):
@@ -286,50 +283,48 @@ class camera():
         os.chdir(self.origPath)
 
         return counter
+    
+
+    
+    def get_point_in_camera_frame(self, point) -> np.array:
+        # Input:  array [x, y, z] in world frame 
+        # Output: array [x, y, z] in camera frame
+        return self.transform_point(point, self.transform_wolrd_to_camera)
+    
+    def get_point_in_world_frame(self, point) -> np.array:
+        # Input:  array [x, y, z] in camera frame 
+        # Output: array [x, y, z] in world frame
+        return self.transform_point(point, self.transform_camera_to_world)
+        
+    def transform_point(self, point: np.array, transform: TransformStamped) -> np.array:
+        # Transform point into new frame using transform
 
 
+        # create PointStamped
+        point_stamped = PointStamped()
+        point_stamped.point.x = point[0]
+        point_stamped.point.y = point[1]
+        point_stamped.point.z = point[2]
 
-def quaternion_to_rotation_matrix(q):
-    qw, qx, qy, qz = q
-    tx = 2 * qx
-    ty = 2 * qy
-    tz = 2 * qz
-    twx = tx * qw
-    twy = ty * qw
-    twz = tz * qw
-    txx = tx * qx
-    txy = ty * qx
-    txz = tz * qx
-    tyy = ty * qy
-    tyz = tz * qy
-    tzz = tz * qz
+        #transform point using the transform
+        transformed_point = tf2_geometry_msgs.do_transform_point(point_stamped, transform)
 
-    R = np.array([[1 - (tyy + tzz), txy - twz, txz + twy],
-                  [txy + twz, 1 - (txx + tzz), tyz - twx],
-                  [txz - twy, tyz + twx, 1 - (txx + tyy)]])
+        #change format to array of type [x, y, z]
+        new_point = np.array([transformed_point.point.x, transformed_point.point.y, transformed_point.point.z])
+        return new_point
+        
+    def project_world_point_onto_camera(self, point: np.array):
+        # Input: Points in the wolrd coordinate frames
+        # Output: array(x,y) coordinates on image
+        point = self.get_point_in_camera_frame(point)
 
-    return R
+        K = np.array(self.camera_info.K)
+        K = K.reshape((3, 3))
 
+        P_camera, _ = cv2.projectPoints(point.T, np.zeros((3, 1)), np.zeros((3, 1)), K, None)
+        image_coordinates = P_camera[0][0]
 
-
-def project_3d_point(camera_matrix, camera_position, camera_orientation, target_position):
-    # Convert the quaternion to a rotation matrix
-    R = quaternion_to_rotation_matrix(camera_orientation)
-    #print(f"R = {R}")
-    # Get the Rodrigues vector (rotation vector) from the rotation matrix
-    rvec, _ = cv2.Rodrigues(R)
-    #print(f"rvec = {rvec}")
-    # Compute the translation vector
-    tvec = -np.dot(R, camera_position)
-    #print(f"tvec = {tvec}")
-
-    # Project the 3D point onto the image
-    projected_points, _ = cv2.projectPoints(np.array([target_position]), rvec, tvec, camera_matrix, None)
-
-    # Get the first projected point
-    projection = projected_points[0][0]
-
-    return projection
+        return image_coordinates
 
 
 if __name__ == '__main__':
