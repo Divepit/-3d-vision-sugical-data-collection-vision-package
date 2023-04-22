@@ -11,7 +11,7 @@ import message_filters
 # ROS Image message
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped
+from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped, Polygon, Point32
 
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
@@ -26,41 +26,78 @@ import numpy as np
 # To return a position
 import tf2_geometry_msgs
 
+class SaveImage():
+    def __init__(self, savePath, origPath, pkgName = 'cvnode'):
+
+        # Required to Store depth image
+        self.counter = 0
+        pkg_path = rospkg.RosPack().get_path(pkgName)
+
+        self.savePath_abs = pkg_path +  '/' + savePath
+
+        self.savePath = savePath
+        self.origPath = origPath
+        
+        os.chdir(pkg_path)
+        if not os.path.exists(os.path.dirname(self.savePath)):
+            os.makedirs(os.path.dirname(self.savePath))
+        os.chdir(self.origPath)
+
+        return
+    
+    def saveImage(self, img, typeSave = cv2.CV_8U, normalize = False):
+        if typeSave == cv2.CV_32F:
+            extention = '.exr'
+        else:
+            extention = '.png'
+        frameName = str(self.counter).zfill(6) + extention
+
+        if normalize == True:
+            if np.max(img) != 0:
+                img = ((img - np.min(img)) / np.max(img) * 255)
+
+        os.chdir(self.savePath_abs)
+        tmp = cv2.imwrite(frameName, img, [typeSave])
+        self.counter += 1
+        os.chdir(self.origPath)
+
+        return
 
 class camera():
     def __init__(self) -> None:
 
         # Toggle to enable / disable saving images
-        self.recordFrames = False
+        self.recordFrames = True
         if self.recordFrames == True:
             ## Required to store results in general
             # get the current timestamp
             now = datetime.now()
             timestamp = now.strftime('%Y-%m-%d-%H-%M-%S')
+            origPath = os.getcwd()
+            resultPath = 'results/' + timestamp + '/'
 
-            self.origPath = os.getcwd()
-        
-            self.pkg_path = rospkg.RosPack().get_path('cvnode')
-            self.resultPath = 'results/' + timestamp + '/'
-
-            self.counter_DepthImage = 0
-            self.pathDepth = self.resultPath + 'depth_Images/'
-            
-            os.chdir(self.pkg_path)
-            if not os.path.exists(os.path.dirname(self.pathDepth)):
-                os.makedirs(os.path.dirname(self.pathDepth))
-            os.chdir(self.origPath)
+            # Required to Store depth image
+            ###
+            pathDepth = resultPath + 'depth_Images/'
+            self.saveDepth = SaveImage(pathDepth, origPath, pkgName='cvnode')
             ###
 
-            # Required to store RGB images
+            # Required to Store depth image normalized
             ###
-            self.counter_RGB = 0
-            self.pathRGB = self.resultPath + 'rgb_Images/'
+            pathDepth_N = resultPath + 'depth_Images_normalized/'
+            self.saveDepth_N = SaveImage(pathDepth_N, origPath, pkgName='cvnode')
+            ###
 
-            os.chdir(self.pkg_path)
-            if not os.path.exists(os.path.dirname(self.pathRGB)):
-                os.makedirs(os.path.dirname(self.pathRGB))
-            os.chdir(self.origPath)
+            # Required to Store RGB image
+            ###
+            pathrgb = resultPath + 'rgb_Images/'
+            self.saveRGB = SaveImage(pathrgb, origPath, pkgName='cvnode')
+            ###
+
+            # Required to Store Masked Depth image
+            ###
+            pathMaskedD = resultPath + 'masked_Depth_Images/'
+            self.saveMasked_D = SaveImage(pathMaskedD, origPath, pkgName='cvnode')
             ###
 
         config_path = rospy.get_param("configFile")
@@ -105,6 +142,10 @@ class camera():
         targetTopic = self.config["coordinates_of_target"]
         self.cameraFrameName = self.config["cameraPoseTF"]
 
+        # Get name of publishing topic
+        maskedDepth_topic = self.config["maskedDepth_topic"]
+        obstacleCenter_topic = self.config["obstacle_center_topic"]
+
         # get camera infos once to initialize
         self.camera_info = rospy.wait_for_message(cameraInfoTopic, CameraInfo, timeout=None)
 
@@ -122,6 +163,10 @@ class camera():
         # Create tf listener
         self.tf_buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        # Create publisher for masked depth image
+        self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=10)
+        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, Polygon, queue_size=10)
                 
         rospy.spin()
     
@@ -158,7 +203,7 @@ class camera():
 
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                self.counter_RGB = self.saveImage(cv2_img, folderName=self.pathRGB, counter=self.counter_RGB)
+                self.saveRGB.saveImage(cv2_img,typeSave=cv2.CV_8U, normalize=False)
                 
             return cv2_img
 
@@ -178,11 +223,27 @@ class camera():
         else:
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
-                self.counter_DepthImage = self.saveImage(cv2_d_img, folderName=self.pathDepth, counter=self.counter_DepthImage)
-
+                self.saveDepth.saveImage(cv2_d_img, cv2.CV_32F)
+                self.saveDepth_N.saveImage(cv2_d_img,cv2.CV_8U, normalize=True)
 
             self.target_point = self.project_world_point_onto_camera(self.targetPosition)
             centers = self.get_obstacle_centers(cv2_d_img)
+
+            # Get 3d centers and publish as polygon
+            centers_3d = self.get3dCenters(centers,cv2_d_img)
+            if len(centers_3d) != 0:
+                self.publishObstacleCenters(centers_3d)
+
+            # Get masked depth image and publish it
+            mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
+            mask = mask.astype(np.uint8)
+            threshold_image = mask * cv2_d_img
+            # threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
+            if self.recordFrames == True:
+                self.saveMasked_D.saveImage(threshold_image,typeSave=cv2.CV_8U, normalize=True)
+
+            masked_depth_msg = bridge.cv2_to_imgmsg(cvim=threshold_image,encoding='32FC1')
+            self.masked_d_img_pub.publish(masked_depth_msg)
             
         return
 
@@ -274,18 +335,6 @@ class camera():
         config = read_yaml_file(config_file_path)
         return config
     
-    def saveImage(self, image, folderName, counter):
-        frameName = str(counter).zfill(5) + '.jpeg'
-
-        os.chdir(self.pkg_path)
-        tmp = cv2.imwrite(folderName + frameName, image)
-        counter += 1
-        os.chdir(self.origPath)
-
-        return counter
-    
-
-    
     def get_point_in_camera_frame(self, point) -> np.array:
         # Input:  array [x, y, z] in world frame 
         # Output: array [x, y, z] in camera frame
@@ -325,6 +374,43 @@ class camera():
         image_coordinates = P_camera[0][0]
 
         return image_coordinates
+    
+    def get3dCenters(self,centers,d_img):
+        
+        if len(centers) == 0:
+            return []
+        
+        centers3d = [None] * len(centers)
+        K = self.camera_info.K
+
+        for i in range(len(centers)):
+            center = centers[i]
+
+            u, v = center[0], center[1]
+
+            # In camera coordinate frame
+            z = d_img[v,u]
+            x = (u - K[2]) / K[0] * z
+            y = (v - K[5]) / K[4] * z
+            
+            # Transform in world frame
+            center3d_world = self.get_point_in_world_frame(np.array([x,y,z]))
+            centers3d[i] = center3d_world
+
+        return centers3d
+    
+    def publishObstacleCenters(self,centers3d):
+        npoints = len(centers3d)
+        centers_msg = Polygon()
+
+        for i in range(npoints):
+            centers_msg.points.append(Point32())
+            centers_msg.points[-1].x = centers3d[i][0]
+            centers_msg.points[-1].y = centers3d[i][1]
+            centers_msg.points[-1].z = centers3d[i][2]
+
+        self.obstacleCenter_pub.publish(centers_msg)
+        return
 
 
 if __name__ == '__main__':
