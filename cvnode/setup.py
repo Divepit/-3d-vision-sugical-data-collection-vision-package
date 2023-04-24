@@ -6,6 +6,7 @@ from catkin_pkg.python_setup import generate_distutils_setup
 from setuptools import setup, find_packages
 
 setup_args = generate_distutils_setup(
+    # packages = find_packages()
     packages=[basename(dirname(abspath(__file__)))],
     package_dir={'': 'src'},
     
