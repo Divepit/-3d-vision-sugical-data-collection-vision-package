@@ -235,7 +235,7 @@ class camera():
                 self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
-            mask = self.get_depth_mask(cv2_d_img, self.get_depth_mask, self.camTargetDistance * self.depth_threshold )
+            mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
             mask = mask.astype(np.uint8)
             threshold_image = mask * cv2_d_img
             # threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
@@ -449,7 +449,7 @@ class camera():
         center = np.mean(points, axis=0)
 
         #TODO calculate center in world frame not camera frame
-        #center_world = self.get_point_in_world_frame()
+        center_world = self.get_point_in_world_frame(center)
 
         # Calculate the distances from the center to each point
         distances = np.linalg.norm(points - center, axis=1)
@@ -466,7 +466,7 @@ class camera():
         # print("Max distance, radius:", max_distance)
         # print("Standard deviation:", std_dev)
         # print("Variance:", variance)
-        return [center, radius, std_dev, variance]
+        return [center_world, radius, std_dev, variance]
 
     
     def publishObstacles(self, spheres):
