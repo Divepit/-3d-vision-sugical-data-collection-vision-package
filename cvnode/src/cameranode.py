@@ -12,6 +12,7 @@ import message_filters
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped, Polygon, Point32
+from cvnode.msg import sphereMessage, ObstacleListMessage
 
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
@@ -144,7 +145,7 @@ class camera():
 
         # Get name of publishing topic
         maskedDepth_topic = self.config["maskedDepth_topic"]
-        obstacleCenter_topic = self.config["obstacle_center_topic"]
+        obstacleCenter_topic = self.config["obstacle_list_topic"]
 
         # get camera infos once to initialize
         self.camera_info = rospy.wait_for_message(cameraInfoTopic, CameraInfo, timeout=None)
@@ -166,7 +167,7 @@ class camera():
 
         # Create publisher for masked depth image
         self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=10)
-        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, Polygon, queue_size=10)
+        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, ObstacleListMessage, queue_size=10)
                 
         rospy.spin()
     
@@ -227,15 +228,14 @@ class camera():
                 self.saveDepth_N.saveImage(cv2_d_img,cv2.CV_8U, normalize=True)
 
             self.target_point = self.project_world_point_onto_camera(self.targetPosition)
-            centers = self.get_obstacle_centers(cv2_d_img)
+            spheres = self.get_obstacle_centers(cv2_d_img)
 
-            # Get 3d centers and publish as polygon
-            centers_3d = self.get3dCenters(centers,cv2_d_img)
-            if len(centers_3d) != 0:
-                self.publishObstacleCenters(centers_3d)
+            
+            if len(spheres) != 0:
+                self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
-            mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
+            mask = self.get_depth_mask(cv2_d_img, self.get_depth_mask, self.camTargetDistance * self.depth_threshold )
             mask = mask.astype(np.uint8)
             threshold_image = mask * cv2_d_img
             # threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
@@ -276,23 +276,45 @@ class camera():
         threshold_image = mask * cv_d_img
         threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
 
-        centers = []
+        spheres = []
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        for c in contours:
+        for i, contour in enumerate(contours):
 
             # calculate moments for each contour
-            M = cv2.moments(c)
- 
+            filled_mask = np.zeros_like(mask)
+
+            # Draw the contours on the black mask
+            cv2.drawContours(
+                image=filled_mask,
+                contours=[contour],
+                contourIdx=0,
+                color= 1,
+                thickness = -1)
             
-            # calculate x,y coordinate of center
-            if M["m00"] != 0 :
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                centers.append((cX,cY))
-                cv2.circle(threshold_image, (cX, cY), 5, (255, 0, 0), -1)
-            else:
-                #skip value or else devide by zero error
-                continue
+            filled_mask = filled_mask.astype(np.bool)
+
+            masked_contour =  cv_d_img * filled_mask
+
+            # Get x, y coordinates of true values in binary mask
+            y_coords, x_coords = np.where(filled_mask)
+
+            # Get depth values at those coordinates
+            depth_values = cv_d_img[y_coords, x_coords]
+
+            # Combine x, y, depth values into a single numpy array
+            point_array = np.column_stack((x_coords, y_coords, depth_values))
+
+            
+            points_3d = self.get3dPoints(point_array)
+            print(points_3d)
+            
+            sphere = self.calculate_sphere_attributes(points_3d)
+            spheres.append(sphere)
+            
+
+
+            
+
             
         cv2.circle(threshold_image, (int(self.target_point[0]), int(self.target_point[1])), 5, (0, 255, 0), -1)
 
@@ -306,7 +328,7 @@ class camera():
             except cv2.error:
                 print("Window already closed. Ignocv_d_imgring")
 
-        return(centers)
+        return spheres
 
 
     def targetPositionCallback(self, msg):
@@ -375,6 +397,8 @@ class camera():
 
         return image_coordinates
     
+
+    #TODO delete when colin is not a lil bitch
     def get3dCenters(self,centers,d_img):
         
         if len(centers) == 0:
@@ -398,18 +422,71 @@ class camera():
             centers3d[i] = center3d_world
 
         return centers3d
+
+    def get3dPoints(self, points_2d_depth: np.array):
+
+        K = np.array(self.camera_info.K)
+        K = K.reshape((3, 3))
+        # Separate the 2D points and depth values
+        points_2d = points_2d_depth[:, :2]
+        depths = points_2d_depth[:, 2]
+
+        dist_coeffs = np.zeros(5,)
+
+
+        # Undistort and normalize the image points
+        img_points = points_2d.reshape(-1, 1, 2).astype(np.float32)
+        normalized_points = cv2.undistortPoints(img_points, K, dist_coeffs)
+
+        # Obtain the 3D points in the camera coordinate system
+        points_3d = normalized_points * depths.reshape(-1, 1, 1)
+        points_3d = points_3d.reshape(-1, 2)
+        points_3d = np.hstack((points_3d, depths.reshape(-1, 1)))
+
+        return points_3d
     
-    def publishObstacleCenters(self,centers3d):
-        npoints = len(centers3d)
-        centers_msg = Polygon()
+    def calculate_sphere_attributes(self, points):
+        center = np.mean(points, axis=0)
 
-        for i in range(npoints):
-            centers_msg.points.append(Point32())
-            centers_msg.points[-1].x = centers3d[i][0]
-            centers_msg.points[-1].y = centers3d[i][1]
-            centers_msg.points[-1].z = centers3d[i][2]
+        #TODO calculate center in world frame not camera frame
+        #center_world = self.get_point_in_world_frame()
 
-        self.obstacleCenter_pub.publish(centers_msg)
+        # Calculate the distances from the center to each point
+        distances = np.linalg.norm(points - center, axis=1)
+
+        # Calculate the max distance
+        max_distance = np.max(distances)
+        radius = max_distance
+
+        # Calculate the standard deviation and variance of the distances
+        std_dev = np.std(distances)
+        variance = np.var(distances)
+
+        # print("Center:", center)
+        # print("Max distance, radius:", max_distance)
+        # print("Standard deviation:", std_dev)
+        # print("Variance:", variance)
+        return [center, radius, std_dev, variance]
+
+    
+    def publishObstacles(self, spheres):
+
+        obstacle_msg = ObstacleListMessage()
+
+        for sphere_element in spheres:
+            print(sphere_element)
+            sphere = sphereMessage()
+            sphere.point.x = sphere_element[0][0]
+            sphere.point.y = sphere_element[0][1]
+            sphere.point.z = sphere_element[0][2]
+
+            sphere.radius = sphere_element[1]
+            sphere.std_dev = sphere_element[2]
+            sphere.variance = sphere_element[3]
+
+            obstacle_msg.obstacles.append(sphere)
+
+        self.obstacleCenter_pub.publish(obstacle_msg)
         return
 
 
