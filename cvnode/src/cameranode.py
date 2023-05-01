@@ -20,6 +20,7 @@ from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
 import cv2
 # to open yaml
+from PIL import Image as pilimage
 import yaml
 import os
 import numpy as np
@@ -57,10 +58,19 @@ class SaveImage():
             if np.max(img) != 0:
                 img = ((img - np.min(img)) / np.max(img) * 255)
 
-        os.chdir(self.savePath_abs)
-        tmp = cv2.imwrite(frameName, img, [typeSave])
-        self.counter += 1
-        os.chdir(self.origPath)
+        if typeSave == cv2.CV_16U:
+            # Convert to PIL Image and save as PNG
+            pil_img = pilimage.fromarray(img, mode='I;16')
+            os.chdir(self.savePath_abs)
+            pil_img.save('output.png')
+            self.counter += 1
+            os.chdir(self.origPath)
+            
+        else:
+            os.chdir(self.savePath_abs)
+            tmp = cv2.imwrite(frameName, img, [typeSave])
+            self.counter += 1
+            os.chdir(self.origPath)
 
         return
 
@@ -68,7 +78,7 @@ class camera():
     def __init__(self) -> None:
 
         # Toggle to enable / disable saving images
-        self.recordFrames = True
+        self.recordFrames = False
         if self.recordFrames == True:
             ## Required to store results in general
             # get the current timestamp
@@ -213,7 +223,35 @@ class camera():
 
     def depthImage_callback(self, msg):
         try: 
-            cv2_d_img = bridge.imgmsg_to_cv2(msg)
+            cv2_d_img = bridge.imgmsg_to_cv2(msg)   # Float32 depth image in m
+
+            ################ 1 channel uint16 ################
+            # Convert to 3 channel uint8
+            cv2_d_img_mm = cv2_d_img * 1000          # Float32 depth image in mm
+
+            # Clip values to a 16-bit range
+            depth_clipped = np.clip(cv2_d_img_mm, 0, 65535)
+
+            # Convert the depth data to an unsigned 16-bit integer numpy array
+            d_img_uint16 = depth_clipped.astype(np.uint16)
+            ################ 1 channel uint16 ################
+
+            ################ 3 channel uint8 ################
+            # # Convert to 3 channel uint8
+            # cv2_d_img_mm = cv2_d_img * 1000          # Float32 depth image in mm
+            # h, w = np.shape(cv2_d_img_mm)
+            # d_img_uint8 = np.zeros((h,w,3), dtype=np.uint8) # empty uint8 3 channel image
+
+            # # # Encode information using logarithmic scale for each channel
+            # # log_scale_1 = np.log2(cv2_d_img_mm + 1) / np.log2(2**16)
+            # # log_scale_2 = np.log2(cv2_d_img_mm + 1) / np.log2(2**8)
+            # # log_scale_3 = np.log2(cv2_d_img_mm + 1) / np.log2(2**1)
+
+            # # # Convert to uint8 and assign to channels
+            # # d_img_uint8[:,:,0] = (log_scale_1 * 255).astype(np.uint8)
+            # # d_img_uint8[:,:,1] = (log_scale_2 * 255).astype(np.uint8)
+            # # d_img_uint8[:,:,2] = (log_scale_3 * 255).astype(np.uint8)
+            ################ 3 channel uint8 ################
 
 
         except CvBridgeError as e:
@@ -225,7 +263,7 @@ class camera():
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
                 self.saveDepth.saveImage(cv2_d_img, cv2.CV_32F)
-                self.saveDepth_N.saveImage(cv2_d_img,cv2.CV_8U, normalize=True)
+                self.saveDepth_N.saveImage(d_img_uint16, cv2.CV_16U)
 
             self.target_point = self.project_world_point_onto_camera(self.targetPosition)
             spheres = self.get_obstacle_centers(cv2_d_img)
@@ -237,12 +275,12 @@ class camera():
             # Get masked depth image and publish it
             mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
             mask = mask.astype(np.uint8)
-            threshold_image = mask * cv2_d_img
-            # threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
+            threshold_image = mask * d_img_uint16
+
             if self.recordFrames == True:
                 self.saveMasked_D.saveImage(threshold_image,typeSave=cv2.CV_8U, normalize=True)
 
-            masked_depth_msg = bridge.cv2_to_imgmsg(cvim=threshold_image,encoding='32FC1')
+            masked_depth_msg = bridge.cv2_to_imgmsg(cvim=d_img_uint16)
             self.masked_d_img_pub.publish(masked_depth_msg)
             
         return
@@ -306,7 +344,7 @@ class camera():
 
             
             points_3d = self.get3dPoints(point_array)
-            print(points_3d)
+            # print(points_3d)
             
             sphere = self.calculate_sphere_attributes(points_3d)
             spheres.append(sphere)
@@ -474,7 +512,7 @@ class camera():
         obstacle_msg = ObstacleListMessage()
 
         for sphere_element in spheres:
-            print(sphere_element)
+            # print(sphere_element)
             sphere = sphereMessage()
             sphere.point.x = sphere_element[0][0]
             sphere.point.y = sphere_element[0][1]
