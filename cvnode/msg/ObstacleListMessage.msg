@@ -1,1 +1,0 @@
-sphereMessage[] obstacles

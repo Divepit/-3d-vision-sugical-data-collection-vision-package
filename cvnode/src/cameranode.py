@@ -12,7 +12,7 @@ import message_filters
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped, Polygon, Point32
-from cvnode.msg import sphereMessage, ObstacleListMessage
+from cvnode.msg import Sphere, SphereList
 
 import sensor_msgs.point_cloud2 as pc2
 # ROS Image message -> OpenCV2 image converter
@@ -177,7 +177,7 @@ class camera():
 
         # Create publisher for masked depth image
         self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=10)
-        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, ObstacleListMessage, queue_size=10)
+        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=10)
                 
         rospy.spin()
     
@@ -509,20 +509,20 @@ class camera():
     
     def publishObstacles(self, spheres):
 
-        obstacle_msg = ObstacleListMessage()
+        obstacle_msg = SphereList()
 
         for sphere_element in spheres:
             # print(sphere_element)
-            sphere = sphereMessage()
-            sphere.point.x = sphere_element[0][0]
-            sphere.point.y = sphere_element[0][1]
-            sphere.point.z = sphere_element[0][2]
+            sphere = Sphere()
+            sphere.center.x = sphere_element[0][0]
+            sphere.center.y = sphere_element[0][1]
+            sphere.center.z = sphere_element[0][2]
 
             sphere.radius = sphere_element[1]
-            sphere.std_dev = sphere_element[2]
-            sphere.variance = sphere_element[3]
+            # sphere.std_dev = sphere_element[2]
+            # sphere.variance = sphere_element[3]
 
-            obstacle_msg.obstacles.append(sphere)
+            obstacle_msg.spheres.append(sphere)
 
         self.obstacleCenter_pub.publish(obstacle_msg)
         return
