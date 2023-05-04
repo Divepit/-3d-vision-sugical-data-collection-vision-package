@@ -15,10 +15,11 @@ from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, Transfo
 from cvnode.msg import Sphere, SphereList
 
 import sensor_msgs.point_cloud2 as pc2
-# ROS Image message -> OpenCV2 image converter
-from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
 import cv2
+# ROS Image message -> OpenCV2 image converter
+from cv_bridge import CvBridge, CvBridgeError
+
 # to open yaml
 from PIL import Image as pilimage
 import yaml
@@ -273,14 +274,16 @@ class camera():
                 self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
+            
             mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
-            mask = mask.astype(np.uint8)
+            mask = mask.astype(np.uint16)
+
             threshold_image = mask * d_img_uint16
 
             if self.recordFrames == True:
                 self.saveMasked_D.saveImage(threshold_image,typeSave=cv2.CV_8U, normalize=True)
 
-            masked_depth_msg = bridge.cv2_to_imgmsg(cvim=d_img_uint16)
+            masked_depth_msg = bridge.cv2_to_imgmsg(cvim = threshold_image)
             self.masked_d_img_pub.publish(masked_depth_msg)
             
         return
