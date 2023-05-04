@@ -345,12 +345,16 @@ class camera():
             # Combine x, y, depth values into a single numpy array
             point_array = np.column_stack((x_coords, y_coords, depth_values))
 
+            # remove nan
+            cond = [~np.isnan(i) for i in depth_values]
+            x_coords,y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
             
             points_3d = self.get3dPoints(point_array)
-            # print(points_3d)
             
             sphere = self.calculate_sphere_attributes(points_3d)
             spheres.append(sphere)
+
+        return spheres
             
 
 
@@ -512,10 +516,11 @@ class camera():
     
     def publishObstacles(self, spheres):
 
+
         obstacle_msg = SphereList()
 
         for sphere_element in spheres:
-            # print(sphere_element)
+
             sphere = Sphere()
             sphere.center.x = sphere_element[0][0]
             sphere.center.y = sphere_element[0][1]
