@@ -274,14 +274,16 @@ class camera():
                 self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
+            
             mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
-            mask = mask.astype(np.uint8)
+            mask = mask.astype(np.uint16)
+
             threshold_image = mask * d_img_uint16
 
             if self.recordFrames == True:
                 self.saveMasked_D.saveImage(threshold_image,typeSave=cv2.CV_8U, normalize=True)
 
-            masked_depth_msg = bridge.cv2_to_imgmsg(cvim=d_img_uint16)
+            masked_depth_msg = bridge.cv2_to_imgmsg(cvim = threshold_image)
             self.masked_d_img_pub.publish(masked_depth_msg)
             
         return
