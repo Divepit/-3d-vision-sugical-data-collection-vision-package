@@ -15,10 +15,11 @@ from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, Transfo
 from cvnode.msg import Sphere, SphereList
 
 import sensor_msgs.point_cloud2 as pc2
-# ROS Image message -> OpenCV2 image converter
-from cv_bridge import CvBridge, CvBridgeError
 # OpenCV2 for saving an image
 import cv2
+# ROS Image message -> OpenCV2 image converter
+from cv_bridge import CvBridge, CvBridgeError
+
 # to open yaml
 from PIL import Image as pilimage
 import yaml
