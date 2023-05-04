@@ -123,7 +123,7 @@ class camera():
         ###
         # Initialize Pose of camera w.r.t camera frame to create transform
         self.Campose_stamped = PoseStamped()
-        self.Campose_stamped.header.frame_id = 'world'
+        self.Campose_stamped.header.frame_id = 'root'
         self.Campose_stamped.pose.position.x = 0.0
         self.Campose_stamped.pose.position.y = 0.0
         self.Campose_stamped.pose.position.z = 0.0
@@ -192,8 +192,8 @@ class camera():
 
     def get_world_data(self):
         # Get camera position
-        self.transform_camera_to_world = self.tf_buffer.lookup_transform('world', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
-        self.transform_wolrd_to_camera = self.tf_buffer.lookup_transform(self.cameraFrameName, 'world', rospy.get_rostime(), rospy.Duration(0.1))
+        self.transform_camera_to_world = self.tf_buffer.lookup_transform('root', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
+        self.transform_wolrd_to_camera = self.tf_buffer.lookup_transform(self.cameraFrameName, 'root', rospy.get_rostime(), rospy.Duration(0.1))
 
         pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, self.transform_camera_to_world)
 
