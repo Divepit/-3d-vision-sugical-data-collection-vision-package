@@ -345,7 +345,7 @@ class camera():
 
             # remove nan
             cond = [~np.isnan(i) for i in depth_values]
-            x_coords,y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
+            x_coords, y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
             
             # Combine x, y, depth values into a single numpy array
             point_array = np.column_stack((x_coords, y_coords, depth_values))
