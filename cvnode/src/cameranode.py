@@ -307,34 +307,60 @@ class camera():
 
 
     def get_obstacle_centers(self, cv_d_img) -> list:
-        #generate depth mask
+        # Generate depth mask
+        mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold)
+        mask = mask.astype(np.bool)
+        masked_image = cv_d_img * mask
+        masked_image = np.nan_to_num(masked_image, copy=False, nan=0.0)
+        masked_depth_image = (255.0 * masked_image / masked_image.max()).astype(np.uint8)
 
-        mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
-        
+        # Apply binary mask to the normalized depth image
 
-        mask = mask.astype(np.uint8)
+        show_image = False
+        if show_image:
+            cv2.namedWindow('img', cv2.WINDOW_NORMAL)
+            cv2.imshow('img', masked_depth_image)
+            cv2.waitKey(0)
+            try:
+                cv2.destroyWindow('img')
+            except cv2.error:
+                print("Window already closed. Ignocv_d_imgring")
+        print(masked_depth_image)
+        print(np.max(masked_depth_image))
 
-        threshold_image = mask * cv_d_img
-        threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
+        # Compute gradients along X and Y axes
+        dx = np.abs(masked_depth_image[1:, 1:] - masked_depth_image[1:, :-1])
+        dy = np.abs(masked_depth_image[1:, 1:] - masked_depth_image[:-1, 1:])
+        dxy = dx + dy
 
         spheres = []
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        for i, contour in enumerate(contours):
 
-            # calculate moments for each contour
-            filled_mask = np.zeros_like(mask)
+        # Replace cv2.findContours with MSER method
+        mser = cv2.MSER_create()
+        mser.setDelta(1)
+        msers, bboxes = mser.detectRegions(dxy)
 
-            # Draw the contours on the black mask
-            cv2.drawContours(
-                image=filled_mask,
-                contours=[contour],
-                contourIdx=0,
-                color= 1,
-                thickness = -1)
-            
+        for i, region in enumerate(msers):
+
+            # Create a binary mask with the current region
+            filled_mask = np.zeros_like(masked_depth_image)
+            for pt in region:
+                filled_mask = cv2.circle(filled_mask, tuple(pt), 1, 1, -1)
             filled_mask = filled_mask.astype(np.bool)
 
-            masked_contour =  cv_d_img * filled_mask
+            masked_contour = cv_d_img * filled_mask
+            
+            #TODO Remove later
+            
+            show_image_1 = True
+            if show_image_1:
+                cv2.namedWindow('img', cv2.WINDOW_NORMAL)
+                cv2.imshow('img', masked_contour)
+                cv2.waitKey(0)
+                try:
+                    cv2.destroyWindow('img')
+                except cv2.error:
+                    print("Window already closed. Ignocv_d_imgring")
 
             # Get x, y coordinates of true values in binary mask
             y_coords, x_coords = np.where(filled_mask)
@@ -345,16 +371,17 @@ class camera():
             # Combine x, y, depth values into a single numpy array
             point_array = np.column_stack((x_coords, y_coords, depth_values))
 
-            # remove nan
+            # Remove nan
             cond = [~np.isnan(i) for i in depth_values]
             x_coords, y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
-            
+
             points_3d = self.get3dPoints(point_array)
-            
+
             sphere = self.calculate_sphere_attributes(points_3d)
             spheres.append(sphere)
 
         return spheres
+
             
 
 
