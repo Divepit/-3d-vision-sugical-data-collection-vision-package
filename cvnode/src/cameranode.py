@@ -342,20 +342,20 @@ class camera():
             # Get depth values at those coordinates
             depth_values = cv_d_img[y_coords, x_coords]
 
-            # Combine x, y, depth values into a single numpy array
-            point_array = np.column_stack((x_coords, y_coords, depth_values))
 
             # remove nan
             cond = [~np.isnan(i) for i in depth_values]
             x_coords,y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
             
-            points_3d = self.get3dPoints(point_array)
+            # Combine x, y, depth values into a single numpy array
+            point_array = np.column_stack((x_coords, y_coords, depth_values))
             
+            points_3d = self.get3dPoints(point_array)
+
             sphere = self.calculate_sphere_attributes(points_3d)
             spheres.append(sphere)
-
-        return spheres
             
+        return spheres
 
 
             
