@@ -347,7 +347,7 @@ class camera():
 
             # remove nan
             cond = [~np.isnan(i) for i in depth_values]
-            x_coords,y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
+            x_coords, y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
             
             points_3d = self.get3dPoints(point_array)
             
