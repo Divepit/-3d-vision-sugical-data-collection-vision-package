@@ -20,6 +20,9 @@ import cv2
 # ROS Image message -> OpenCV2 image converter
 from cv_bridge import CvBridge, CvBridgeError
 
+#For PCA
+from sklearn.decomposition import PCA
+
 # to open yaml
 from PIL import Image as pilimage
 import yaml
@@ -116,11 +119,11 @@ class camera():
         self.config = self.read_config_file(config_file_path=config_path)
 
         # Initialize Target position
-        self.targetPosition = np.zeros((3,1), dtype=np.float)
+        self.targetPosition = np.zeros((3,1), dtype=float)
 
         # Initialize Camera Pose
-        self.CamPosition = np.zeros((3,1), dtype=np.float)
-        self.CamOrient = np.zeros((4,1), dtype=np.float)
+        self.CamPosition = np.zeros((3,1), dtype=float)
+        self.CamOrient = np.zeros((4,1), dtype=float)
         ###
         # Initialize Pose of camera w.r.t camera frame to create transform
         self.Campose_stamped = PoseStamped()
@@ -141,6 +144,10 @@ class camera():
         self.depth_threshold = 0.8
         # Min distance from camera
         self.finger_distance_min = 0.1
+
+        #Sphere generation with recursion parameters
+        self.max_sphere_radius = 0.4
+        self.max_recursions = 2
 
         rospy.init_node(self.config["camera_node_name"])
 
@@ -332,11 +339,10 @@ class camera():
                 color= 1,
                 thickness = -1)
             
-            filled_mask = filled_mask.astype(np.bool)
+            filled_mask = filled_mask.astype(bool)
 
-            sphere = self.get_sphere_from_mask(filled_mask=filled_mask,depth_img=cv_d_img)
-            
-            spheres.append(sphere)
+            recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
+            spheres += recursion_spheres
             
         show_image = False
         if show_image:
@@ -349,6 +355,63 @@ class camera():
                 print("Window already closed. Ignocv_d_imgring")
 
         return spheres
+    
+    def get_spheres_recursion(self, mask, depth_img, recursion_num):
+        sphere_list = []
+        sphere = self.get_sphere_from_mask(mask, depth_img)
+        print(f"get sphere recursion at {recursion_num} num of recursions")
+
+        #if the sphere radius is still too large and we didn't exceed our recursion number split and recurse
+        if sphere[1] > self.max_sphere_radius and recursion_num < self.max_recursions:
+            recursion_num += 1
+            mask_1, mask_2 = self.split_mask_using_pca(mask)
+            spheres_1 = self.get_spheres_recursion(mask_1, depth_img, recursion_num)
+            spheres_2 = self.get_spheres_recursion(mask_2, depth_img, recursion_num)
+            sphere_list = spheres_1 + spheres_2
+        else:
+            sphere_list.append(sphere)
+
+        return sphere_list
+        
+        
+    def split_mask_using_pca(self, mask):
+        assert len(mask.shape) == 2, "Input mask should be a 2D binary array"
+        
+        x_points, y_points = np.where(mask)
+        points_of_interest = np.column_stack((x_points, y_points))
+        # Extract contour points
+        
+        contour_points = np.vstack(points_of_interest).squeeze()
+
+
+        # Perform PCA on the contour points
+        pca = PCA(n_components=2)
+        pca.fit(contour_points)
+
+
+        # Project contour points onto the first principal component
+        projected_points = pca.transform(contour_points)[:, 0]
+
+        # Find the median value of the projected points
+        mean_point = np.mean(projected_points)
+
+        # Separate points based on the median value
+        points1 = contour_points[projected_points <= mean_point]
+        points2 = contour_points[projected_points > mean_point]
+
+        # Create two empty masks
+        mask1 = np.zeros_like(mask)
+        mask2 = np.zeros_like(mask)
+
+        # Fill the two masks with separated points
+        for pt in points1:
+            mask1[pt[0], pt[1]] = 255
+
+        for pt in points2:
+            mask2[pt[0], pt[1]] = 255
+
+        # Return the two masks
+        return mask1, mask2
     
     def get_sphere_from_mask(self,filled_mask,depth_img):
 
