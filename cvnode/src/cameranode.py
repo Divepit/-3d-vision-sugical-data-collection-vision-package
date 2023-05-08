@@ -334,13 +334,29 @@ class camera():
             
             filled_mask = filled_mask.astype(np.bool)
 
-            # masked_contour =  cv_d_img * filled_mask
+            sphere = self.get_sphere_from_mask(filled_mask=filled_mask,depth_img=cv_d_img)
+            
+            spheres.append(sphere)
+            
+        show_image = False
+        if show_image:
+            cv2.namedWindow('img', cv2.WINDOW_NORMAL)
+            cv2.imshow('img', threshold_image)
+            cv2.waitKey(0)
+            try:
+                cv2.destroyWindow('img')
+            except cv2.error:
+                print("Window already closed. Ignocv_d_imgring")
 
-            # Get x, y coordinates of true values in binary mask
+        return spheres
+    
+    def get_sphere_from_mask(self,filled_mask,depth_img):
+
+        # Get x, y coordinates of true values in binary mask
             y_coords, x_coords = np.where(filled_mask)
 
             # Get depth values at those coordinates
-            depth_values = cv_d_img[y_coords, x_coords]
+            depth_values = depth_img[y_coords, x_coords]
 
             # remove nan
             cond = [~np.isnan(i) for i in depth_values]
@@ -362,28 +378,9 @@ class camera():
             center_world = self.get_point_in_world_frame(center_3d)
 
             sphere = [center_world,radius_3d,0,0]
-            
-            spheres.append(sphere)
-            
-        return spheres
 
+            return sphere
 
-            
-
-            
-        cv2.circle(threshold_image, (int(self.target_point[0]), int(self.target_point[1])), 5, (0, 255, 0), -1)
-
-        show_image = False
-        if show_image:
-            cv2.namedWindow('img', cv2.WINDOW_NORMAL)
-            cv2.imshow('img', threshold_image)
-            cv2.waitKey(0)
-            try:
-                cv2.destroyWindow('img')
-            except cv2.error:
-                print("Window already closed. Ignocv_d_imgring")
-
-        return spheres
     
     def getCenter_Radius_fromPixel(self,point_array,radius):
 
