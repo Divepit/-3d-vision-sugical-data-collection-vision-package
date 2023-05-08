@@ -359,8 +359,7 @@ class camera():
     def get_spheres_recursion(self, mask, depth_img, recursion_num):
         sphere_list = []
         sphere = self.get_sphere_from_mask(mask, depth_img)
-        print(f"get sphere recursion at {recursion_num} num of recursions")
-
+        
         #if the sphere radius is still too large and we didn't exceed our recursion number split and recurse
         if sphere[1] > self.max_sphere_radius and recursion_num < self.max_recursions:
             recursion_num += 1
