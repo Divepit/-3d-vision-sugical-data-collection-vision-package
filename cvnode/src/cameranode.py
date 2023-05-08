@@ -334,7 +334,7 @@ class camera():
             
             filled_mask = filled_mask.astype(np.bool)
 
-            masked_contour =  cv_d_img * filled_mask
+            # masked_contour =  cv_d_img * filled_mask
 
             # Get x, y coordinates of true values in binary mask
             y_coords, x_coords = np.where(filled_mask)
@@ -342,17 +342,27 @@ class camera():
             # Get depth values at those coordinates
             depth_values = cv_d_img[y_coords, x_coords]
 
-
             # remove nan
             cond = [~np.isnan(i) for i in depth_values]
             x_coords, y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
             
             # Combine x, y, depth values into a single numpy array
             point_array = np.column_stack((x_coords, y_coords, depth_values))
-            
-            points_3d = self.get3dPoints(point_array)
 
-            sphere = self.calculate_sphere_attributes(points_3d)
+            # Get radius and center in pixel
+            center, radius = self.getImageCircle(point_array)
+
+            # Get depth of circle
+            depth_center = np.min(point_array[:,2])
+
+            point_array_2d = np.array([[center[0] ,center[1] ,depth_center]])
+
+            center_3d, radius_3d = self.getCenter_Radius_fromPixel(point_array_2d,radius)
+
+            center_world = self.get_point_in_world_frame(center_3d)
+
+            sphere = [center_world,radius_3d,0,0]
+            
             spheres.append(sphere)
             
         return spheres
@@ -374,6 +384,36 @@ class camera():
                 print("Window already closed. Ignocv_d_imgring")
 
         return spheres
+    
+    def getCenter_Radius_fromPixel(self,point_array,radius):
+
+        pts1 = point_array
+        pts2 = np.zeros_like(point_array)
+        pts2[:,:] = point_array[:,:]  
+        pts2[:,0] -= radius
+
+        pts1_3d = self.get3dPoints(pts1) 
+        pts2_3d = self.get3dPoints(pts2)
+
+               
+
+        radius = np.linalg.norm(pts1_3d-pts2_3d)
+
+        return pts1_3d[0,:], radius
+    
+    def getImageCircle(self,point_array):
+        x = point_array[:,0]
+        y = point_array[:,1]
+
+        x_center = np.mean(x,axis=0)
+        y_center = np.mean(y,axis=0)
+
+        x_dist = np.abs(x-x_center)
+        y_dist = np.abs(y-y_center)
+        dist = x_dist**2 + y_dist**2
+        rad_sqrd = np.max(dist)
+
+        return [x_center,y_center], np.sqrt(rad_sqrd)
 
 
     def targetPositionCallback(self, msg):
