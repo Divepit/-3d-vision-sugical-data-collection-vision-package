@@ -146,8 +146,8 @@ class camera():
         self.finger_distance_min = 0.1
 
         #Sphere generation with recursion parameters
-        self.max_sphere_radius = 0.4
-        self.max_recursions = 2
+        self.max_sphere_radius = 0.07
+        self.max_recursions = 10
 
         rospy.init_node(self.config["camera_node_name"])
 
@@ -236,7 +236,7 @@ class camera():
             ################ 1 channel uint16 ################
             # Convert to 3 channel uint8
             cv2_d_img_mm = cv2_d_img * 1000          # Float32 depth image in mm
-
+            cv2_d_img_mm = np.nan_to_num(cv2_d_img_mm, nan=65535, posinf=65535, neginf=0)
             # Clip values to a 16-bit range
             depth_clipped = np.clip(cv2_d_img_mm, 0, 65535)
 
@@ -343,7 +343,26 @@ class camera():
 
             recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
             spheres += recursion_spheres
+
+        debug = False
+        if debug and len(spheres) > 0:
+            print(f"number of spheres {len(spheres)}")
             
+            #print(spheres)
+            #sphere_array = np.array(spheres)
+            #print(sphere_array)
+            radius = [elem[1] for elem in spheres]
+
+            radius_array = np.array(radius)
+            max_radius = np.max(radius_array)
+            #print(sphera_array)
+            #max_value_third_col = np.max(sphera_array[:, 2])
+            print("Maximum radius: ", max_radius)
+            radius_too_large = np.sum(radius_array > self.max_sphere_radius)
+            print(f"The Number of spheres that are larger than {self.max_sphere_radius} m is: {radius_too_large}")
+
+
+
         show_image = False
         if show_image:
             cv2.namedWindow('img', cv2.WINDOW_NORMAL)
