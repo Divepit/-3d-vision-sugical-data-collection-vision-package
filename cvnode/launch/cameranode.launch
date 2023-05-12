@@ -6,7 +6,7 @@
 
     <param name="configFile" type="string" value="$(find cvnode)/config/config.yaml" />
 
-    <node pkg = "cvnode" name = "cvnode" output = "screen" type = "cameranode.py" launch-prefix="bash -c 'sleep 20; $0 $@'">
+    <node pkg = "cvnode" name = "cvnode" output = "screen" type = "cameranode.py" launch-prefix="bash -c 'sleep 10; $0 $@'">
     </node>
 
 </launch>
