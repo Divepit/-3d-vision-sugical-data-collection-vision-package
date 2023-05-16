@@ -66,7 +66,7 @@ class SaveImage():
             # Convert to PIL Image and save as PNG
             pil_img = pilimage.fromarray(img, mode='I;16')
             os.chdir(self.savePath_abs)
-            pil_img.save('output.png')
+            pil_img.save(frameName)
             self.counter += 1
             os.chdir(self.origPath)
             
@@ -271,7 +271,7 @@ class camera():
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
                 self.saveDepth.saveImage(cv2_d_img, cv2.CV_32F)
-                self.saveDepth_N.saveImage(d_img_uint16, cv2.CV_16U)
+                self.saveDepth_N.saveImage(cv2_d_img,normalize=True)
 
             self.target_point = self.project_world_point_onto_camera(self.targetPosition)
             spheres = self.get_obstacle_centers(cv2_d_img)
