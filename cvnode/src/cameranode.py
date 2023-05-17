@@ -12,6 +12,7 @@ import message_filters
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped, Polygon, Point32
+from std_msgs.msg import Bool
 from cvnode.msg import Sphere, SphereList
 
 import sensor_msgs.point_cloud2 as pc2
@@ -156,6 +157,7 @@ class camera():
         depthimage_topic = self.config["depthImage_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
         pointcloud_topic = self.config["pointCloud_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
         cameraInfoTopic = self.config["cameraInfo_topic_name"] # http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html
+        lineOfSightTopic = self.config["lineofsight_topic_name"] 
 
         # Get name of target position topic and camera position
         targetTopic = self.config["coordinates_of_target"]
@@ -186,6 +188,9 @@ class camera():
         # Create publisher for masked depth image
         self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=10)
         self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=10)
+
+        # Create publisher for line of sight condition
+        self.line_of_sight_pub = rospy.Publisher(lineOfSightTopic, Bool, queue_size=10) 
                 
         rospy.spin()
     
@@ -292,8 +297,35 @@ class camera():
 
             masked_depth_msg = bridge.cv2_to_imgmsg(cvim = threshold_image)
             self.masked_d_img_pub.publish(masked_depth_msg)
+
+            # check and publish line of sight to target
+            lineOfSight = self.checkLineOfSight(mask,self.targetPosition)
+            boolmessage = Bool()
+            boolmessage.data = lineOfSight
+            self.line_of_sight_pub.publish(boolmessage)
             
         return
+    
+    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2):
+        cameraFrame_point = self.get_point_in_camera_frame(targetPosition_worldFrame)
+        image_coord = self.project_world_point_onto_camera(targetPosition_worldFrame)
+        # Initialize Line of sight bool 
+        lineOfSight = True
+
+        # check if target is behind camera
+        if cameraFrame_point[2] <= 0:
+            lineOfSight = False
+
+        # Check if target is outside of image frame
+        if self.camera_info.height < image_coord[1] or image_coord[1] < 0:
+            lineOfSight = False
+        if self.camera_info.width < image_coord[0] or image_coord[0] < 0:
+            lineOfSight = False
+
+        # Check if mask at target position and pixelradius around it is empty
+        
+
+        return lineOfSight
 
     
     def get_depth_mask(self,depth_image, min_distance, max_distance):
