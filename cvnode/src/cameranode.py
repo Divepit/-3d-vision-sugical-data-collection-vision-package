@@ -312,18 +312,25 @@ class camera():
         # Initialize Line of sight bool 
         lineOfSight = True
 
+        x_img = image_coord[0].astype(int)
+        y_img = image_coord[1].astype(int)
+
         # check if target is behind camera
         if cameraFrame_point[2] <= 0:
             lineOfSight = False
 
         # Check if target is outside of image frame
-        if self.camera_info.height < image_coord[1] or image_coord[1] < 0:
+        if self.camera_info.height - pixelradius < y_img or y_img + pixelradius < 0:
             lineOfSight = False
-        if self.camera_info.width < image_coord[0] or image_coord[0] < 0:
+        if self.camera_info.width - pixelradius < x_img or x_img + pixelradius < 0:
             lineOfSight = False
 
         # Check if mask at target position and pixelradius around it is empty
-        
+        if lineOfSight == True:
+            targetRegion = mask[x_img-pixelradius:x_img+pixelradius, y_img-pixelradius:y_img+pixelradius ]
+            isObstructed = np.any(targetRegion == 1)
+            if isObstructed == True:
+                lineOfSight = False
 
         return lineOfSight
 
