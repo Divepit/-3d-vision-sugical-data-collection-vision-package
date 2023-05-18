@@ -327,7 +327,7 @@ class camera():
 
         # Check if mask at target position and pixelradius around it is empty
         if lineOfSight == True:
-            targetRegion = mask[x_img-pixelradius:x_img+pixelradius, y_img-pixelradius:y_img+pixelradius ]
+            targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
             isObstructed = np.any(targetRegion == 1)
             if isObstructed == True:
                 lineOfSight = False
