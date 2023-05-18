@@ -115,7 +115,7 @@ class camera():
             pathMaskedD = resultPath + 'masked_Depth_Images/'
             self.saveMasked_D = SaveImage(pathMaskedD, origPath, pkgName='cvnode')
             ###
-
+        
         config_path = rospy.get_param("configFile")
         self.config = self.read_config_file(config_file_path=config_path)
 
@@ -147,8 +147,8 @@ class camera():
         self.finger_distance_min = 0.1
 
         #Sphere generation with recursion parameters
-        self.max_sphere_radius = 0.07
-        self.max_recursions = 10
+        self.max_sphere_radius = 0.08
+        self.max_recursions = 5
 
         rospy.init_node(self.config["camera_node_name"])
 
@@ -306,33 +306,38 @@ class camera():
             
         return
     
-    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2):
+    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2, center_deviation = 20):
         cameraFrame_point = self.get_point_in_camera_frame(targetPosition_worldFrame)
         image_coord = self.project_world_point_onto_camera(targetPosition_worldFrame)
         # Initialize Line of sight bool 
-        lineOfSight = True
 
         x_img = image_coord[0].astype(int)
         y_img = image_coord[1].astype(int)
 
         # check if target is behind camera
         if cameraFrame_point[2] <= 0:
-            lineOfSight = False
+            return False
 
         # Check if target is outside of image frame
         if self.camera_info.height - pixelradius < y_img or y_img + pixelradius < 0:
-            lineOfSight = False
+            return False
         if self.camera_info.width - pixelradius < x_img or x_img + pixelradius < 0:
-            lineOfSight = False
+            return False
+        
+        center_x = self.camera_info.width/2
+        center_y = self.camera_info.height/2
+        if x_img > center_x + center_deviation or x_img < center_x - center_deviation:
+            return False
+        if y_img > center_y + center_deviation or y_img < center_y - center_deviation:
+            return False
 
         # Check if mask at target position and pixelradius around it is empty
-        if lineOfSight == True:
-            targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
-            isObstructed = np.any(targetRegion == 1)
-            if isObstructed == True:
-                lineOfSight = False
+        targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
+        isObstructed = np.any(targetRegion == 1)
+        if isObstructed == True:
+            return False
 
-        return lineOfSight
+        return True
 
     
     def get_depth_mask(self,depth_image, min_distance, max_distance):
@@ -696,6 +701,5 @@ class camera():
 if __name__ == '__main__':
     # Instantiate CvBridge
     bridge = CvBridge()
-
     #start camera node
     camera_class = camera()
