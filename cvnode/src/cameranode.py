@@ -478,33 +478,29 @@ class camera():
     def get_sphere_from_mask(self,filled_mask,depth_img):
 
         # Get x, y coordinates of true values in binary mask
-            y_coords, x_coords = np.where(filled_mask)
+        y_coords, x_coords = np.where(filled_mask)
 
-            # Get depth values at those coordinates
-            depth_values = depth_img[y_coords, x_coords]
+        # Get depth values at those coordinates
+        depth_values = depth_img[y_coords, x_coords]
+        
+        # Combine x, y, depth values into a single numpy array
+        point_array = np.column_stack((x_coords, y_coords, depth_values))
 
-            # remove nan
-            cond = [~np.isnan(i) for i in depth_values]
-            x_coords, y_coords, depth_values = x_coords[cond], y_coords[cond], depth_values[cond]
-            
-            # Combine x, y, depth values into a single numpy array
-            point_array = np.column_stack((x_coords, y_coords, depth_values))
+        # Get radius and center in pixel
+        center, radius = self.getImageCircle(point_array)
 
-            # Get radius and center in pixel
-            center, radius = self.getImageCircle(point_array)
+        # Get depth of circle
+        depth_center = np.min(point_array[:,2])
 
-            # Get depth of circle
-            depth_center = np.min(point_array[:,2])
+        point_array_2d = np.array([[center[0] ,center[1] ,depth_center]])
 
-            point_array_2d = np.array([[center[0] ,center[1] ,depth_center]])
+        center_3d, radius_3d = self.getCenter_Radius_fromPixel(point_array_2d,radius)
 
-            center_3d, radius_3d = self.getCenter_Radius_fromPixel(point_array_2d,radius)
+        center_world = self.get_point_in_world_frame(center_3d)
 
-            center_world = self.get_point_in_world_frame(center_3d)
+        sphere = [center_world,radius_3d,0,0]
 
-            sphere = [center_world,radius_3d,0,0]
-
-            return sphere
+        return sphere
 
     
     def getCenter_Radius_fromPixel(self,point_array,radius):
