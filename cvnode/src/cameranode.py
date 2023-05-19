@@ -299,12 +299,12 @@ class camera():
         if self.camera_info.width - pixelradius < x_img or x_img + pixelradius < 0:
             return False
         
-        center_x = self.camera_info.width/2
-        center_y = self.camera_info.height/2
-        if x_img > center_x + center_deviation or x_img < center_x - center_deviation:
-            return False
-        if y_img > center_y + center_deviation or y_img < center_y - center_deviation:
-            return False
+        #center_x = self.camera_info.width/2
+        #center_y = self.camera_info.height/2
+        #if x_img > center_x + center_deviation or x_img < center_x - center_deviation:
+        #    return False
+        #if y_img > center_y + center_deviation or y_img < center_y - center_deviation:
+        #    return False
 
         # Check if mask at target position and pixelradius around it is empty
         targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
