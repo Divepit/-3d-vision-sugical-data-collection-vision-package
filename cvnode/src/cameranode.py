@@ -173,9 +173,8 @@ class camera():
         # Subscribe to image topics
         image = message_filters.Subscriber(image_topic, Image)
         image_depth = message_filters.Subscriber(depthimage_topic, Image)
-        point_cloud = message_filters.Subscriber(pointcloud_topic, PointCloud2)
         # get Synchronize data
-        ts = message_filters.ApproximateTimeSynchronizer([image, image_depth, point_cloud], queue_size=10, slop=0.5)
+        ts = message_filters.ApproximateTimeSynchronizer([image, image_depth], queue_size=10, slop=0.5)
         ts.registerCallback(self.get_syncronous_data)
 
         # Subscribe to target position
@@ -186,21 +185,20 @@ class camera():
         self.listener = tf2_ros.TransformListener(self.tf_buffer)
 
         # Create publisher for masked depth image
-        self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=10)
-        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=10)
+        self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=3)
+        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=3)
 
         # Create publisher for line of sight condition
-        self.line_of_sight_pub = rospy.Publisher(lineOfSightTopic, Bool, queue_size=10) 
+        self.line_of_sight_pub = rospy.Publisher(lineOfSightTopic, Bool, queue_size=3) 
                 
         rospy.spin()
     
 
-    def get_syncronous_data(self, image, depth_image, point_cloud):
+    def get_syncronous_data(self, image, depth_image):
         #main callback function
         self.get_world_data()
         self.image_callback(image)
         self.depthImage_callback(depth_image)
-        self.pointcloud_callback(point_cloud)
 
 
     def get_world_data(self):
@@ -231,14 +229,10 @@ class camera():
                 
             return cv2_img
 
-    def pointcloud_callback(self, msg):
-        return
-
     def depthImage_callback(self, msg):
         try: 
             cv2_d_img = bridge.imgmsg_to_cv2(msg)   # Float32 depth image in m
 
-            ################ 1 channel uint16 ################
             # Convert to 3 channel uint8
             cv2_d_img_mm = cv2_d_img * 1000          # Float32 depth image in mm
             cv2_d_img_mm = np.nan_to_num(cv2_d_img_mm, nan=65535, posinf=65535, neginf=0)
@@ -247,25 +241,6 @@ class camera():
 
             # Convert the depth data to an unsigned 16-bit integer numpy array
             d_img_uint16 = depth_clipped.astype(np.uint16)
-            ################ 1 channel uint16 ################
-
-            ################ 3 channel uint8 ################
-            # # Convert to 3 channel uint8
-            # cv2_d_img_mm = cv2_d_img * 1000          # Float32 depth image in mm
-            # h, w = np.shape(cv2_d_img_mm)
-            # d_img_uint8 = np.zeros((h,w,3), dtype=np.uint8) # empty uint8 3 channel image
-
-            # # # Encode information using logarithmic scale for each channel
-            # # log_scale_1 = np.log2(cv2_d_img_mm + 1) / np.log2(2**16)
-            # # log_scale_2 = np.log2(cv2_d_img_mm + 1) / np.log2(2**8)
-            # # log_scale_3 = np.log2(cv2_d_img_mm + 1) / np.log2(2**1)
-
-            # # # Convert to uint8 and assign to channels
-            # # d_img_uint8[:,:,0] = (log_scale_1 * 255).astype(np.uint8)
-            # # d_img_uint8[:,:,1] = (log_scale_2 * 255).astype(np.uint8)
-            # # d_img_uint8[:,:,2] = (log_scale_3 * 255).astype(np.uint8)
-            ################ 3 channel uint8 ################
-
 
         except CvBridgeError as e:
             print(e)        
@@ -599,32 +574,6 @@ class camera():
         image_coordinates = P_camera[0][0]
 
         return image_coordinates
-    
-
-    #TODO delete when colin is not a lil bitch
-    def get3dCenters(self,centers,d_img):
-        
-        if len(centers) == 0:
-            return []
-        
-        centers3d = [None] * len(centers)
-        K = self.camera_info.K
-
-        for i in range(len(centers)):
-            center = centers[i]
-
-            u, v = center[0], center[1]
-
-            # In camera coordinate frame
-            z = d_img[v,u]
-            x = (u - K[2]) / K[0] * z
-            y = (v - K[5]) / K[4] * z
-            
-            # Transform in world frame
-            center3d_world = self.get_point_in_world_frame(np.array([x,y,z]))
-            centers3d[i] = center3d_world
-
-        return centers3d
 
     def get3dPoints(self, points_2d_depth: np.array):
 
