@@ -2,20 +2,16 @@
 import rospy
 import rospkg
 from datetime import datetime
-import math
 
-import tf
-from tf2_msgs.msg import TFMessage
+
 import tf2_ros
 import message_filters
 # ROS Image message
-from sensor_msgs.msg import Image, PointCloud2, CameraInfo
-from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point, PoseStamped, Vector3, PointStamped, TransformStamped, Polygon, Point32
+from sensor_msgs.msg import Image, CameraInfo
+from geometry_msgs.msg import Point, PoseStamped, PointStamped, TransformStamped
 from std_msgs.msg import Bool
 from cvnode.msg import Sphere, SphereList
 
-import sensor_msgs.point_cloud2 as pc2
 # OpenCV2 for saving an image
 import cv2
 # ROS Image message -> OpenCV2 image converter
@@ -203,8 +199,8 @@ class camera():
 
     def get_world_data(self):
         # Get camera position
-        self.transform_camera_to_world = self.tf_buffer.lookup_transform('root', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.1))
-        self.transform_wolrd_to_camera = self.tf_buffer.lookup_transform(self.cameraFrameName, 'root', rospy.get_rostime(), rospy.Duration(0.1))
+        self.transform_camera_to_world = self.tf_buffer.lookup_transform('root', self.cameraFrameName, rospy.get_rostime(), rospy.Duration(0.5))
+        self.transform_wolrd_to_camera = self.tf_buffer.lookup_transform(self.cameraFrameName, 'root', rospy.get_rostime(), rospy.Duration(0.5))
 
         pose_transformed = tf2_geometry_msgs.do_transform_pose(self.Campose_stamped, self.transform_camera_to_world)
 
@@ -317,10 +313,7 @@ class camera():
     
     def get_depth_mask(self,depth_image, min_distance, max_distance):
         #returns a mask with all 1 for distance values between min and max distance everything else is 0
-    
-        #replace all nan with np.inf
-        mask_threshold = np.nan_to_num(depth_image, nan= np.inf)
-        
+        mask_threshold = depth_image.copy()
         max_mask = mask_threshold < max_distance
         min_mask = mask_threshold > min_distance
 
