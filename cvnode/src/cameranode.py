@@ -226,7 +226,8 @@ class Camera():
             return cv2_img
 
     def depthImage_callback(self, msg):
-        try: 
+        try:
+            # Get Depth Image
             cv2_d_img = bridge.imgmsg_to_cv2(msg)   # Float32 depth image in m
 
             # Convert to 3 channel uint8
@@ -251,13 +252,11 @@ class Camera():
 
             self.target_point = self.project_world_point_onto_camera(self.targetPosition)
             spheres = self.get_obstacle_centers(cv2_d_img)
-
             
             if len(spheres) != 0:
                 self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
-            
             mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
             mask = mask.astype(np.uint16)
 
@@ -319,10 +318,8 @@ class Camera():
 
 
     def get_obstacle_centers(self, cv_d_img) -> list:
-        #generate depth mask
-
+        # Generate depth mask
         mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
-        
 
         mask = mask.astype(np.uint8)
 
@@ -348,7 +345,6 @@ class Camera():
 
             recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
             spheres += recursion_spheres
-
 
         #set true to print debug info
         debug = False
