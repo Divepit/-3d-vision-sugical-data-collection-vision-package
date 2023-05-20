@@ -75,7 +75,7 @@ class SaveImage():
 
         return
 
-class camera():
+class Camera():
     def __init__(self) -> None:
 
         # Toggle to enable / disable saving images
@@ -169,6 +169,7 @@ class camera():
         # Subscribe to image topics
         image = message_filters.Subscriber(image_topic, Image)
         image_depth = message_filters.Subscriber(depthimage_topic, Image)
+
         # get Synchronize data
         ts = message_filters.ApproximateTimeSynchronizer([image, image_depth], queue_size=10, slop=0.5)
         ts.registerCallback(self.get_syncronous_data)
@@ -218,7 +219,6 @@ class camera():
             print(e)
 
         else:
-
             # Save your OpenCV2 image as a jpeg
             if self.recordFrames == True:
                 self.saveRGB.saveImage(cv2_img,typeSave=cv2.CV_8U, normalize=False)
@@ -277,7 +277,7 @@ class camera():
             
         return
     
-    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2, center_deviation = 20):
+    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2):
         cameraFrame_point = self.get_point_in_camera_frame(targetPosition_worldFrame)
         image_coord = self.project_world_point_onto_camera(targetPosition_worldFrame)
         # Initialize Line of sight bool 
@@ -294,13 +294,6 @@ class camera():
             return False
         if self.camera_info.width - pixelradius < x_img or x_img + pixelradius < 0:
             return False
-        
-        #center_x = self.camera_info.width/2
-        #center_y = self.camera_info.height/2
-        #if x_img > center_x + center_deviation or x_img < center_x - center_deviation:
-        #    return False
-        #if y_img > center_y + center_deviation or y_img < center_y - center_deviation:
-        #    return False
 
         # Check if mask at target position and pixelradius around it is empty
         targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
@@ -356,19 +349,17 @@ class camera():
             recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
             spheres += recursion_spheres
 
+
+        #set true to print debug info
         debug = False
         if debug and len(spheres) > 0:
             print(f"number of spheres {len(spheres)}")
             
-            #print(spheres)
-            #sphere_array = np.array(spheres)
-            #print(sphere_array)
             radius = [elem[1] for elem in spheres]
 
             radius_array = np.array(radius)
             max_radius = np.max(radius_array)
-            #print(sphera_array)
-            #max_value_third_col = np.max(sphera_array[:, 2])
+
             print("Maximum radius: ", max_radius)
             radius_too_large = np.sum(radius_array > self.max_sphere_radius)
             print(f"The Number of spheres that are larger than {self.max_sphere_radius} m is: {radius_too_large}")
@@ -607,10 +598,6 @@ class camera():
         std_dev = np.std(distances)
         variance = np.var(distances)
 
-        # print("Center:", center)
-        # print("Max distance, radius:", max_distance)
-        # print("Standard deviation:", std_dev)
-        # print("Variance:", variance)
         return [center_world, radius, std_dev, variance]
 
     
@@ -640,4 +627,4 @@ if __name__ == '__main__':
     # Instantiate CvBridge
     bridge = CvBridge()
     #start camera node
-    camera_class = camera()
+    camera_class = Camera()
