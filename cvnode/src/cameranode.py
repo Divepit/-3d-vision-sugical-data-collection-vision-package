@@ -33,6 +33,10 @@ import numpy as np
 # To return a position
 import tf2_geometry_msgs
 
+from concurrent.futures import ThreadPoolExecutor
+import concurrent.futures
+import multiprocessing
+
 class SaveImage():
     def __init__(self, savePath, origPath, pkgName = 'cvnode'):
 
@@ -155,7 +159,6 @@ class camera():
         # Define your image topic
         image_topic = self.config["image_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
         depthimage_topic = self.config["depthImage_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/Image.html
-        pointcloud_topic = self.config["pointCloud_topic_name"] # http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html
         cameraInfoTopic = self.config["cameraInfo_topic_name"] # http://docs.ros.org/en/api/sensor_msgs/html/msg/CameraInfo.html
         lineOfSightTopic = self.config["lineofsight_topic_name"] 
 
@@ -164,7 +167,6 @@ class camera():
         self.cameraFrameName = self.config["cameraPoseTF"]
 
         # Get name of publishing topic
-        maskedDepth_topic = self.config["maskedDepth_topic"]
         obstacleCenter_topic = self.config["obstacle_list_topic"]
 
         # get camera infos once to initialize
@@ -185,11 +187,10 @@ class camera():
         self.listener = tf2_ros.TransformListener(self.tf_buffer)
 
         # Create publisher for masked depth image
-        self.masked_d_img_pub = rospy.Publisher(maskedDepth_topic, Image, queue_size=3)
-        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=3)
+        self.obstacleCenter_pub = rospy.Publisher(obstacleCenter_topic, SphereList, queue_size=10)
 
         # Create publisher for line of sight condition
-        self.line_of_sight_pub = rospy.Publisher(lineOfSightTopic, Bool, queue_size=3) 
+        self.line_of_sight_pub = rospy.Publisher(lineOfSightTopic, Bool, queue_size=10) 
                 
         rospy.spin()
     
@@ -242,26 +243,19 @@ class camera():
             # Convert the depth data to an unsigned 16-bit integer numpy array
             d_img_uint16 = depth_clipped.astype(np.uint16)
 
+            # Save your OpenCV2 image as a jpeg
+            if self.recordFrames == True:
+                self.saveDepth.saveImage(cv2_d_img, cv2.CV_32F)
+                self.saveDepth_N.saveImage(cv2_d_img,normalize=True)
+
         except CvBridgeError as e:
             print(e)        
             print("Error in receiving depth image!")
             return
         
         else:
-            # Save your OpenCV2 image as a jpeg
-            if self.recordFrames == True:
-                self.saveDepth.saveImage(cv2_d_img, cv2.CV_32F)
-                self.saveDepth_N.saveImage(cv2_d_img,normalize=True)
 
-            self.target_point = self.project_world_point_onto_camera(self.targetPosition)
-            spheres = self.get_obstacle_centers(cv2_d_img)
-
-            
-            if len(spheres) != 0:
-                self.publishObstacles(spheres)
-
-            # Get masked depth image and publish it
-            
+            # Get masked depth image and save it
             mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
             mask = mask.astype(np.uint16)
 
@@ -270,18 +264,21 @@ class camera():
             if self.recordFrames == True:
                 self.saveMasked_D.saveImage(threshold_image,typeSave=cv2.CV_8U, normalize=True)
 
-            masked_depth_msg = bridge.cv2_to_imgmsg(cvim = threshold_image)
-            self.masked_d_img_pub.publish(masked_depth_msg)
-
             # check and publish line of sight to target
             lineOfSight = self.checkLineOfSight(mask,self.targetPosition)
             boolmessage = Bool()
             boolmessage.data = lineOfSight
             self.line_of_sight_pub.publish(boolmessage)
+
+            # Locate obstacles
+            spheres = self.get_obstacle_centers(cv2_d_img)
+            
+            if len(spheres) != 0:
+                self.publishObstacles(spheres)
             
         return
     
-    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2, center_deviation = 20):
+    def checkLineOfSight(self, mask, targetPosition_worldFrame, pixelradius = 2):
         cameraFrame_point = self.get_point_in_camera_frame(targetPosition_worldFrame)
         image_coord = self.project_world_point_onto_camera(targetPosition_worldFrame)
         # Initialize Line of sight bool 
@@ -298,13 +295,6 @@ class camera():
             return False
         if self.camera_info.width - pixelradius < x_img or x_img + pixelradius < 0:
             return False
-        
-        #center_x = self.camera_info.width/2
-        #center_y = self.camera_info.height/2
-        #if x_img > center_x + center_deviation or x_img < center_x - center_deviation:
-        #    return False
-        #if y_img > center_y + center_deviation or y_img < center_y - center_deviation:
-        #    return False
 
         # Check if mask at target position and pixelradius around it is empty
         targetRegion = mask[y_img-pixelradius:y_img+pixelradius, x_img-pixelradius:x_img+pixelradius ]
@@ -336,32 +326,55 @@ class camera():
         #generate depth mask
 
         mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
-        
-
         mask = mask.astype(np.uint8)
 
         threshold_image = mask * cv_d_img
         threshold_image = cv2.cvtColor(threshold_image, cv2.COLOR_GRAY2RGB)
 
+        # spheres = []
+        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # for i, contour in enumerate(contours):
+
+        #     # calculate moments for each contour
+        #     filled_mask = np.zeros_like(mask)
+
+        #     # Draw the contours on the black mask
+        #     cv2.drawContours(
+        #         image=filled_mask,
+        #         contours=[contour],
+        #         contourIdx=0,
+        #         color= 1,
+        #         thickness = -1)
+            
+        #     filled_mask = filled_mask.astype(bool)
+
+        #     recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
+
+        #     spheres += recursion_spheres
+
         spheres = []
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        for i, contour in enumerate(contours):
 
-            # calculate moments for each contour
-            filled_mask = np.zeros_like(mask)
+        # Get the number of available CPU cores
+        num_processes = multiprocessing.cpu_count()
 
-            # Draw the contours on the black mask
-            cv2.drawContours(
-                image=filled_mask,
-                contours=[contour],
-                contourIdx=0,
-                color= 1,
-                thickness = -1)
-            
-            filled_mask = filled_mask.astype(bool)
+        n = len(contours)
+        camera_info = self.camera_info
+        max_sphere_radius = self.max_sphere_radius
+        max_recursions = self.max_recursions
+        inputs = zip([cv_d_img]*n, [mask]*n, contours, [camera_info.K]*n, [max_sphere_radius]*n, [max_recursions]*n)
 
-            recursion_spheres = self.get_spheres_recursion(filled_mask, cv_d_img, 0)
-            spheres += recursion_spheres
+
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            results = pool.map(process_contour, inputs)
+            spheres = [result for result in results if result is not None]
+        # for input in inputs:
+        #     rec_spheres = process_contour(input)
+        #     spheres += rec_spheres
+
+        # Transform to world frame
+        # for sphere in spheres:
+        #     sphere[0] = self.get_point_in_world_frame(sphere[0])
 
         debug = False
         if debug and len(spheres) > 0:
@@ -380,8 +393,6 @@ class camera():
             radius_too_large = np.sum(radius_array > self.max_sphere_radius)
             print(f"The Number of spheres that are larger than {self.max_sphere_radius} m is: {radius_too_large}")
 
-
-
         show_image = False
         if show_image:
             cv2.namedWindow('img', cv2.WINDOW_NORMAL)
@@ -393,121 +404,6 @@ class camera():
                 print("Window already closed. Ignocv_d_imgring")
 
         return spheres
-    
-    def get_spheres_recursion(self, mask, depth_img, recursion_num):
-        sphere_list = []
-        sphere = self.get_sphere_from_mask(mask, depth_img)
-        
-        #if the sphere radius is still too large and we didn't exceed our recursion number split and recurse
-        if sphere[1] > self.max_sphere_radius and recursion_num < self.max_recursions:
-            recursion_num += 1
-            mask_1, mask_2 = self.split_mask_using_pca(mask)
-            spheres_1 = self.get_spheres_recursion(mask_1, depth_img, recursion_num)
-            spheres_2 = self.get_spheres_recursion(mask_2, depth_img, recursion_num)
-            sphere_list = spheres_1 + spheres_2
-        else:
-            sphere_list.append(sphere)
-
-        return sphere_list
-        
-        
-    def split_mask_using_pca(self, mask):
-        assert len(mask.shape) == 2, "Input mask should be a 2D binary array"
-        
-        x_points, y_points = np.where(mask)
-        points_of_interest = np.column_stack((x_points, y_points))
-        # Extract contour points
-        
-        contour_points = np.vstack(points_of_interest).squeeze()
-
-
-        # Perform PCA on the contour points
-        pca = PCA(n_components=2)
-        pca.fit(contour_points)
-
-
-        # Project contour points onto the first principal component
-        projected_points = pca.transform(contour_points)[:, 0]
-
-        # Find the median value of the projected points
-        mean_point = np.mean(projected_points)
-
-        # Separate points based on the median value
-        points1 = contour_points[projected_points <= mean_point]
-        points2 = contour_points[projected_points > mean_point]
-
-        # Create two empty masks
-        mask1 = np.zeros_like(mask)
-        mask2 = np.zeros_like(mask)
-
-        # Fill the two masks with separated points
-        for pt in points1:
-            mask1[pt[0], pt[1]] = 255
-
-        for pt in points2:
-            mask2[pt[0], pt[1]] = 255
-
-        # Return the two masks
-        return mask1, mask2
-    
-    def get_sphere_from_mask(self,filled_mask,depth_img):
-
-        # Get x, y coordinates of true values in binary mask
-        y_coords, x_coords = np.where(filled_mask)
-
-        # Get depth values at those coordinates
-        depth_values = depth_img[y_coords, x_coords]
-        
-        # Combine x, y, depth values into a single numpy array
-        point_array = np.column_stack((x_coords, y_coords, depth_values))
-
-        # Get radius and center in pixel
-        center, radius = self.getImageCircle(point_array)
-
-        # Get depth of circle
-        depth_center = np.min(point_array[:,2])
-
-        point_array_2d = np.array([[center[0] ,center[1] ,depth_center]])
-
-        center_3d, radius_3d = self.getCenter_Radius_fromPixel(point_array_2d,radius)
-
-        center_world = self.get_point_in_world_frame(center_3d)
-
-        sphere = [center_world,radius_3d,0,0]
-
-        return sphere
-
-    
-    def getCenter_Radius_fromPixel(self,point_array,radius):
-
-        pts1 = point_array
-        pts2 = np.zeros_like(point_array)
-        pts2[:,:] = point_array[:,:]  
-        pts2[:,0] -= radius
-
-        pts1_3d = self.get3dPoints(pts1) 
-        pts2_3d = self.get3dPoints(pts2)
-
-               
-
-        radius = np.linalg.norm(pts1_3d-pts2_3d)
-
-        return pts1_3d[0,:], radius
-    
-    def getImageCircle(self,point_array):
-        x = point_array[:,0]
-        y = point_array[:,1]
-
-        x_center = np.mean(x,axis=0)
-        y_center = np.mean(y,axis=0)
-
-        x_dist = np.abs(x-x_center)
-        y_dist = np.abs(y-y_center)
-        dist = x_dist**2 + y_dist**2
-        rad_sqrd = np.max(dist)
-
-        return [x_center,y_center], np.sqrt(rad_sqrd)
-
 
     def targetPositionCallback(self, msg):
         self.targetPosition = np.array([msg.x, msg.y, msg.z])
@@ -538,29 +434,12 @@ class camera():
     def get_point_in_camera_frame(self, point) -> np.array:
         # Input:  array [x, y, z] in world frame 
         # Output: array [x, y, z] in camera frame
-        return self.transform_point(point, self.transform_wolrd_to_camera)
+        return transform_point(point, self.transform_wolrd_to_camera)
     
     def get_point_in_world_frame(self, point) -> np.array:
         # Input:  array [x, y, z] in camera frame 
         # Output: array [x, y, z] in world frame
-        return self.transform_point(point, self.transform_camera_to_world)
-        
-    def transform_point(self, point: np.array, transform: TransformStamped) -> np.array:
-        # Transform point into new frame using transform
-
-
-        # create PointStamped
-        point_stamped = PointStamped()
-        point_stamped.point.x = point[0]
-        point_stamped.point.y = point[1]
-        point_stamped.point.z = point[2]
-
-        #transform point using the transform
-        transformed_point = tf2_geometry_msgs.do_transform_point(point_stamped, transform)
-
-        #change format to array of type [x, y, z]
-        new_point = np.array([transformed_point.point.x, transformed_point.point.y, transformed_point.point.z])
-        return new_point
+        return transform_point(point, self.transform_camera_to_world)
         
     def project_world_point_onto_camera(self, point: np.array):
         # Input: Points in the wolrd coordinate frames
@@ -574,28 +453,6 @@ class camera():
         image_coordinates = P_camera[0][0]
 
         return image_coordinates
-
-    def get3dPoints(self, points_2d_depth: np.array):
-
-        K = np.array(self.camera_info.K)
-        K = K.reshape((3, 3))
-        # Separate the 2D points and depth values
-        points_2d = points_2d_depth[:, :2]
-        depths = points_2d_depth[:, 2]
-
-        dist_coeffs = np.zeros(5,)
-
-
-        # Undistort and normalize the image points
-        img_points = points_2d.reshape(-1, 1, 2).astype(np.float32)
-        normalized_points = cv2.undistortPoints(img_points, K, dist_coeffs)
-
-        # Obtain the 3D points in the camera coordinate system
-        points_3d = normalized_points * depths.reshape(-1, 1, 1)
-        points_3d = points_3d.reshape(-1, 2)
-        points_3d = np.hstack((points_3d, depths.reshape(-1, 1)))
-
-        return points_3d
     
     def calculate_sphere_attributes(self, points):
         center = np.mean(points, axis=0)
@@ -641,6 +498,166 @@ class camera():
 
         self.obstacleCenter_pub.publish(obstacle_msg)
         return
+    
+def transform_point(point: np.array, transform: TransformStamped) -> np.array:
+    # Transform point into new frame using transform
+
+    # create PointStamped
+    point_stamped = PointStamped()
+    point_stamped.point.x = point[0]
+    point_stamped.point.y = point[1]
+    point_stamped.point.z = point[2]
+
+    #transform point using the transform
+    transformed_point = tf2_geometry_msgs.do_transform_point(point_stamped, transform)
+
+    #change format to array of type [x, y, z]
+    new_point = np.array([transformed_point.point.x, transformed_point.point.y, transformed_point.point.z])
+    return new_point
+
+def split_mask_using_pca(mask):
+    assert len(mask.shape) == 2, "Input mask should be a 2D binary array"
+    
+    x_points, y_points = np.where(mask)
+    points_of_interest = np.column_stack((x_points, y_points))
+    # Extract contour points
+    
+    contour_points = np.vstack(points_of_interest).squeeze()
+
+    # Perform PCA on the contour points
+    pca = PCA(n_components=2)
+    pca.fit(contour_points)
+
+    # Project contour points onto the first principal component
+    projected_points = pca.transform(contour_points)[:, 0]
+
+    # Find the median value of the projected points
+    mean_point = np.mean(projected_points)
+
+    # Separate points based on the median value
+    points1 = contour_points[projected_points <= mean_point]
+    points2 = contour_points[projected_points > mean_point]
+
+    # Create two empty masks
+    mask1 = np.zeros_like(mask)
+    mask2 = np.zeros_like(mask)
+
+    # Fill the two masks with separated points
+    for pt in points1:
+        mask1[pt[0], pt[1]] = 255
+
+    for pt in points2:
+        mask2[pt[0], pt[1]] = 255
+
+    # Return the two masks
+    return mask1, mask2
+
+def getImageCircle(point_array):
+    x = point_array[:,0]
+    y = point_array[:,1]
+
+    x_center = np.mean(x,axis=0)
+    y_center = np.mean(y,axis=0)
+
+    x_dist = np.abs(x-x_center)
+    y_dist = np.abs(y-y_center)
+    dist = x_dist**2 + y_dist**2
+    rad_sqrd = np.max(dist)
+
+    return [x_center,y_center], np.sqrt(rad_sqrd)
+
+def get3dPoints(points_2d_depth: np.array, camera_info):
+
+    K = np.array(camera_info)
+    K = K.reshape((3, 3))
+    # Separate the 2D points and depth values
+    points_2d = points_2d_depth[:, :2]
+    depths = points_2d_depth[:, 2]
+
+    dist_coeffs = np.zeros(5,)
+
+
+    # Undistort and normalize the image points
+    img_points = points_2d.reshape(-1, 1, 2).astype(np.float32)
+    normalized_points = cv2.undistortPoints(img_points, K, dist_coeffs)
+
+    # Obtain the 3D points in the camera coordinate system
+    points_3d = normalized_points * depths.reshape(-1, 1, 1)
+    points_3d = points_3d.reshape(-1, 2)
+    points_3d = np.hstack((points_3d, depths.reshape(-1, 1)))
+
+    return points_3d
+
+def getCenter_Radius_fromPixel(point_array,radius, camera_info):
+
+    pts1 = point_array
+    pts2 = np.zeros_like(point_array)
+    pts2[:,:] = point_array[:,:]  
+    pts2[:,0] -= radius
+
+    pts1_3d = get3dPoints(pts1, camera_info) 
+    pts2_3d = get3dPoints(pts2, camera_info)
+
+    radius = np.linalg.norm(pts1_3d-pts2_3d)
+
+    return pts1_3d[0,:], radius
+
+def get_sphere_from_mask(filled_mask,depth_img, camera_info):
+
+    # Get x, y coordinates of true values in binary mask
+    y_coords, x_coords = np.where(filled_mask)
+
+    # Get depth values at those coordinates
+    depth_values = depth_img[y_coords, x_coords]
+    
+    # Combine x, y, depth values into a single numpy array
+    point_array = np.column_stack((x_coords, y_coords, depth_values))
+
+    # Get radius and center in pixel
+    center, radius = getImageCircle(point_array)
+
+    # Get depth of circle
+    depth_center = np.min(point_array[:,2])
+
+    point_array_2d = np.array([[center[0] ,center[1] ,depth_center]])
+
+    center_3d, radius_3d = getCenter_Radius_fromPixel(point_array_2d,radius, camera_info)
+
+    # center_world = self.get_point_in_world_frame(center_3d)
+
+    sphere = [center_3d,radius_3d,0,0]
+
+    return sphere
+
+def get_spheres_recursion(mask, depth_img, recursion_num, camera_info, max_sphere_radius, max_recursions):
+    sphere_list = []
+    sphere = get_sphere_from_mask(mask, depth_img, camera_info)
+    
+    #if the sphere radius is still too large and we didn't exceed our recursion number split and recurse
+    if sphere[1] > max_sphere_radius and recursion_num < max_recursions:
+        recursion_num += 1
+        mask_1, mask_2 = split_mask_using_pca(mask)
+        spheres_1 = get_spheres_recursion(mask_1, depth_img, recursion_num, camera_info, max_sphere_radius, max_recursions)
+        spheres_2 = get_spheres_recursion(mask_2, depth_img, recursion_num, camera_info, max_sphere_radius, max_recursions)
+        sphere_list = spheres_1 + spheres_2
+    else:
+        sphere_list.append(sphere)
+
+    return sphere_list
+
+def process_contour(inputs):
+    cv_d_img, mask, contour, camera_info, max_sphere_radius, max_recursions = inputs
+    # calculate moments for each contour
+    filled_mask = np.zeros_like(mask)
+    cv2.drawContours(
+        image=filled_mask,
+        contours=[contour],
+        contourIdx=0,
+        color=1,
+        thickness=-1)
+    filled_mask = filled_mask.astype(bool)
+    recursion_spheres = get_spheres_recursion(filled_mask, cv_d_img, 0, camera_info, max_sphere_radius, max_recursions)
+    return recursion_spheres
 
 
 if __name__ == '__main__':
