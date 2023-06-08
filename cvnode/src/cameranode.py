@@ -138,7 +138,9 @@ class Camera():
         self.camTargetDistance = 0
 
         # Initialize depth image threshold in percent
-        self.depth_threshold = 0.8
+        self.depth_threshold = 0.15
+        self.depth_threshold_min = 0.1
+        self.depth_threshold_max = 0.2
         # Min distance from camera
         self.finger_distance_min = 0.1
 
@@ -257,7 +259,7 @@ class Camera():
                 self.publishObstacles(spheres)
 
             # Get masked depth image and publish it
-            mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
+            mask = self.get_depth_mask(cv2_d_img, self.finger_distance_min, self.get_depth_threshold(self.camTargetDistance))
             mask = mask.astype(np.uint16)
 
             threshold_image = mask * d_img_uint16
@@ -319,7 +321,7 @@ class Camera():
 
     def get_obstacle_centers(self, cv_d_img) -> list:
         # Generate depth mask
-        mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.camTargetDistance * self.depth_threshold )
+        mask = self.get_depth_mask(cv_d_img, self.finger_distance_min, self.get_depth_threshold(self.camTargetDistance))
 
         mask = mask.astype(np.uint8)
 
@@ -617,7 +619,10 @@ class Camera():
 
         self.obstacleCenter_pub.publish(obstacle_msg)
         return
-
+    
+    def get_depth_threshold(self,target_distance)-> float:
+        distance = target_distance - np.clip(target_distance * self.depth_threshold, self.depth_threshold_min, self.depth_threshold_max)
+        return distance
 
 if __name__ == '__main__':
     # Instantiate CvBridge
